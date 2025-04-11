@@ -1,0 +1,19 @@
+2025-04-10 16:04:12,210 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] WARN  [io.qua.config] (Quarkus Main Thread) Unrecognized configuration key "quarkus.datasource.connection-timeout" was provided; it will be ignored; verify that the dependency extension for this configuration is set or that you did not make a typo
+2025-04-10 16:04:12,210 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] WARN  [io.qua.config] (Quarkus Main Thread) Unrecognized configuration key "quarkus.datasource.max-size" was provided; it will be ignored; verify that the dependency extension for this configuration is set or that you did not make a typo
+2025-04-10 16:04:13,388 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] INFO  [io.quarkus] (Quarkus Main Thread) code-with-quarkus 1.0.0-SNAPSHOT on JVM (powered by Quarkus 3.21.1) started in 3.461s. Listening on: http://localhost:8081
+2025-04-10 16:04:13,391 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] INFO  [io.quarkus] (Quarkus Main Thread) Profile dev activated. Live Coding activated.
+2025-04-10 16:04:13,391 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] INFO  [io.quarkus] (Quarkus Main Thread) Installed features: [agroal, cdi, hibernate-orm, hibernate-orm-panache, jdbc-postgresql, narayana-jta, rest, rest-jackson, scheduler, smallrye-context-propagation, smallrye-openapi, swagger-ui, vertx]
+2025-04-10 16:04:25,440 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] INFO  [org.acm.VideoIdCrawlerController] (ForkJoinPool.commonPool-worker-1) Loading existing movie IDs from 1 to 259740
+2025-04-10 16:04:25,442 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] INFO  [org.acm.VideoIdCrawlerController] (ForkJoinPool.commonPool-worker-1) Fetching existing IDs from 1 to 3000
+2025-04-10 16:04:25,451 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] INFO  [org.acm.VideoIdCrawlerController] (ForkJoinPool.commonPool-worker-1) Video ID crawler completed.
+2025-04-10 16:10:21,287 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] WARNING [org.aes.rea.ter.uti.ShutdownHooks] (Aesh Shutdown Hook) Task failed: java.io.IOException: Error executing 'stty icrnl ixon echo icanon iexten intr ^C': stty: 'standard input': unable to perform all requested operations
+
+	at org.aesh.readline.terminal.impl.ExecPty.exec(ExecPty.java:460)
+	at org.aesh.readline.terminal.impl.ExecPty.setAttr(ExecPty.java:215)
+	at org.aesh.readline.terminal.impl.AbstractPosixTerminal.close(AbstractPosixTerminal.java:69)
+	at org.aesh.readline.terminal.impl.PosixSysTerminal.close(PosixSysTerminal.java:68)
+	at org.aesh.readline.terminal.utils.ShutdownHooks.runTasks(ShutdownHooks.java:68)
+	at org.aesh.readline.terminal.utils.ShutdownHooks.access$000(ShutdownHooks.java:34)
+	at org.aesh.readline.terminal.utils.ShutdownHooks$1.run(ShutdownHooks.java:49)
+
+2025-04-10 16:10:21,302 macbook-air-2 /Library/Java/JavaVirtualMachines/graalvm-jdk-21.0.6+8.1/Contents/Home/bin/java[71095] INFO  [io.quarkus] (Quarkus Main Thread) code-with-quarkus stopped in 0.047s
