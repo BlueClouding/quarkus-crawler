@@ -140,7 +140,6 @@ public class MovieParser {
             }
             logger.info(String.format("Extracted %d movies in total", movies.size()));
             return movies;
-
         } catch (Exception e) {
             logger.error("Error extracting movie links: " + e.getMessage(), e);
             return new ArrayList<>();
