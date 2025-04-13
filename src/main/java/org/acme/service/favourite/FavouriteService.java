@@ -1,4 +1,4 @@
-package org.acme.service;
+package org.acme.service.favourite;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import org.acme.model.FavouriteRequest;
@@ -18,6 +18,8 @@ public class FavouriteService {
 
     private static final Logger logger = Logger.getLogger(FavouriteService.class);
     private static final String FAVOURITE_API_URL = "https://123av.com/zh/ajax/user/favourite";
+    private static final int MAX_RETRIES = 3;
+    private static final long INITIAL_BACKOFF_MS = 200; // Start with 500ms delay
     
     private final HttpClient httpClient;
     
@@ -77,6 +79,7 @@ public class FavouriteService {
 
     /**
      * Process a single favourite operation by making an HTTP request to the external API
+     * with retry mechanism
      * 
      * @param request The favourite request
      * @return The response object
@@ -90,19 +93,61 @@ public class FavouriteService {
             return new FavouriteResponse(false, "Missing required fields: action, type, or id");
         }
         
-        try {
-            // Call the external API
-            String apiResponse = callExternalFavouriteApi(request);
-            
-            if (apiResponse != null) {
-                return new FavouriteResponse(true, "Successfully processed favourite operation for movie ID: " + request.getId());
-            } else {
-                return new FavouriteResponse(false, "Failed to process favourite operation for movie ID: " + request.getId());
+        // Implement retry logic with exponential backoff
+        int retryCount = 0;
+        Exception lastException = null;
+        
+        while (retryCount <= MAX_RETRIES) {
+            try {
+                // If this is a retry, log it
+                if (retryCount > 0) {
+                    logger.infof("Retry attempt %d/%d for movie ID %d", retryCount, MAX_RETRIES, request.getId());
+                }
+                
+                // Call the external API
+                String apiResponse = callExternalFavouriteApi(request);
+                
+                if (apiResponse != null) {
+                    // Success - return immediately
+                    if (retryCount > 0) {
+                        logger.infof("Successfully processed movie ID %d after %d retries", request.getId(), retryCount);
+                    }
+                    return new FavouriteResponse(true, "Successfully processed favourite operation for movie ID: " + request.getId());
+                }
+                
+                // If we get here, the API call failed but didn't throw an exception
+                logger.warnf("API call failed for movie ID %d (attempt %d/%d)", request.getId(), retryCount + 1, MAX_RETRIES + 1);
+            } catch (Exception e) {
+                lastException = e;
+                logger.warnf("Error processing favourite for movie ID %d (attempt %d/%d): %s", 
+                        request.getId(), retryCount + 1, MAX_RETRIES + 1, e.getMessage());
             }
-        } catch (Exception e) {
-            logger.errorf("Error processing favourite: %s", e.getMessage());
-            return new FavouriteResponse(false, "Error processing favourite: " + e.getMessage());
+            
+            // If we've reached max retries, break out of the loop
+            if (retryCount >= MAX_RETRIES) {
+                break;
+            }
+            
+            // Calculate backoff time with exponential increase
+            long backoffTime = INITIAL_BACKOFF_MS * (long)Math.pow(2, retryCount);
+            logger.infof("Waiting %d ms before retry %d for movie ID %d", backoffTime, retryCount + 1, request.getId());
+            
+            try {
+                Thread.sleep(backoffTime);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                logger.warn("Thread interrupted during retry backoff");
+                break; // Exit the retry loop if interrupted
+            }
+            
+            retryCount++;
         }
+        
+        // If we get here, all retries failed
+        String errorMessage = lastException != null ? lastException.getMessage() : "API call failed after all retry attempts";
+        logger.errorf("Failed to process favourite for movie ID %d after %d attempts: %s", 
+                request.getId(), retryCount, errorMessage);
+        return new FavouriteResponse(false, "Error processing favourite after " + retryCount + " attempts: " + errorMessage);
     }
 
     /**

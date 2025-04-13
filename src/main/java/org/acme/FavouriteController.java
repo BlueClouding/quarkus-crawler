@@ -7,7 +7,7 @@ import jakarta.ws.rs.core.Response;
 
 import org.acme.model.FavouriteRequest;
 import org.acme.model.FavouriteResponse;
-import org.acme.service.FavouriteService;
+import org.acme.service.favourite.FavouriteService;
 import org.jboss.logging.Logger;
 
 import java.util.Map;
