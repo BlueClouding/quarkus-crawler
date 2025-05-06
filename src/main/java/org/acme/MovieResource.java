@@ -7,11 +7,16 @@ import jakarta.ws.rs.core.Response;
 import java.util.List;
 
 import org.acme.entity.Movie;
+import org.acme.scheduler.MovieDetailCrawlerWorker;
+import jakarta.inject.Inject;
 
 @Path("/movies")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class MovieResource {
+
+    @Inject
+    MovieDetailCrawlerWorker movieDetailCrawlerWorker;
 
     @GET
     public List<Movie> listAll() {
@@ -76,5 +81,20 @@ public class MovieResource {
             return Response.noContent().build();
         }
         return Response.status(Response.Status.NOT_FOUND).build();
+    }
+
+    /**
+     * 调试用：手动触发处理单个电影
+     */
+    @GET
+    @Path("/debug/process/{id}")
+    @Transactional
+    public Response debugProcessOneMovie(@PathParam("id") Long movieId) {
+        try {
+            movieDetailCrawlerWorker.processOneMovieById(movieId);
+            return Response.ok().entity("Movie processed: " + movieId).build();
+        } catch (Exception e) {
+            return Response.serverError().entity("Error: " + e.getMessage()).build();
+        }
     }
 }

@@ -203,20 +203,26 @@ public class CollectionProcessService {
             List<List<Integer>> pageBatches = createPageBatches(totalPages, PAGES_PER_THREAD);
             logger.infof("Created %d page batches", pageBatches.size());
             
-            // Process each batch in a separate thread
-            List<CompletableFuture<List<Movie>>> futures = new ArrayList<>();
+            // Process each batch in a separate thread and save immediately after each batch
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
             
             for (List<Integer> batch : pageBatches) {
-                CompletableFuture<List<Movie>> future = CompletableFuture.supplyAsync(() -> {
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                     List<Movie> batchMovies = new ArrayList<>();
+                    List<Long> batchProcessedIds = new ArrayList<>();
+                    int batchFetchCount = 0;
+                    int batchSaveCount = 0;
+                    int batchErrorCount = 0;
+                    
                     logger.infof("Processing page batch: %d to %d", batch.get(0), batch.get(batch.size() - 1));
                     
+                    // Step 1: Fetch movies from all pages in this batch
                     for (Integer page : batch) {
                         try {
                             List<Movie> pageMovies = processCollectionPage(page);
                             if (pageMovies != null && !pageMovies.isEmpty()) {
                                 batchMovies.addAll(pageMovies);
-                                fetchedCount.addAndGet(pageMovies.size());
+                                batchFetchCount += pageMovies.size();
                                 logger.infof("Fetched %d movies from page %d/%d", 
                                         pageMovies.size(), page, totalPages);
                             } else {
@@ -232,17 +238,51 @@ public class CollectionProcessService {
                             }
                         } catch (Exception e) {
                             logger.errorf("Error processing page %d: %s", page, e.getMessage());
-                            errorCount.incrementAndGet();
+                            batchErrorCount++;
                         }
                     }
                     
-                    return batchMovies;
+                    // Step 2: Save this batch's movies to database immediately
+                    if (!batchMovies.isEmpty()) {
+                        logger.infof("Saving %d movies from batch %d to %d to database", 
+                                batchMovies.size(), batch.get(0), batch.get(batch.size() - 1));
+                        
+                        for (Movie movie : batchMovies) {
+                            try {
+                                saveMovie(movie);
+                                batchSaveCount++;
+                                
+                                // Add the original ID to the processed IDs list
+                                if (movie.getOriginalId() != null) {
+                                    batchProcessedIds.add(movie.getOriginalId().longValue());
+                                }
+                            } catch (Exception e) {
+                                logger.errorf("Error saving movie %s: %s", movie.getCode(), e.getMessage());
+                                batchErrorCount++;
+                            }
+                        }
+                        
+                        // Save processed IDs to file immediately
+                        if (!batchProcessedIds.isEmpty()) {
+                            FileUtils.saveProcessedIds(batchProcessedIds);
+                            logger.infof("Saved %d processed IDs from batch to file", batchProcessedIds.size());
+                        }
+                        
+                        // Update counters
+                        fetchedCount.addAndGet(batchFetchCount);
+                        savedCount.addAndGet(batchSaveCount);
+                        errorCount.addAndGet(batchErrorCount);
+                        
+                        logger.infof("Completed batch %d to %d: fetched=%d, saved=%d, errors=%d", 
+                                batch.get(0), batch.get(batch.size() - 1), 
+                                batchFetchCount, batchSaveCount, batchErrorCount);
+                    }
                 }, collectionThreadPool);
                 
                 futures.add(future);
             }
             
-            // Wait for all futures to complete and combine results
+            // Wait for all futures to complete
             CompletableFuture<Void> allFutures = CompletableFuture.allOf(
                     futures.toArray(new CompletableFuture[0])
             );
@@ -250,40 +290,7 @@ public class CollectionProcessService {
             // Wait for all futures to complete
             allFutures.join();
             
-            // Combine all fetched movies
-            List<Movie> fetchedMovies = futures.stream()
-                    .map(CompletableFuture::join)
-                    .flatMap(List::stream)
-                    .collect(Collectors.toList());
-            
-            logger.infof("All page batches completed, fetched %d movies total", fetchedMovies.size());
-            
-            // Step 3: Save fetched movies to database
-            logger.infof("Step 3: Saving %d fetched movies to database", fetchedMovies.size());
-            
-            // Track processed IDs for later removal
-            List<Long> processedIds = new ArrayList<>();
-            
-            for (Movie movie : fetchedMovies) {
-                try {
-                    saveMovie(movie);
-                    savedCount.incrementAndGet();
-                    
-                    // Add the original ID to the processed IDs list
-                    if (movie.getOriginalId() != null) {
-                        processedIds.add(movie.getOriginalId().longValue());
-                    }
-                } catch (Exception e) {
-                    logger.errorf("Error saving movie %s: %s", movie.getCode(), e.getMessage());
-                    errorCount.incrementAndGet();
-                }
-            }
-            
-            // Save processed IDs to file for later removal
-            if (!processedIds.isEmpty()) {
-                FileUtils.saveProcessedIds(processedIds);
-                logger.infof("Saved %d processed IDs to file", processedIds.size());
-            }
+            logger.infof("All page batches completed, fetched and saved %d movies total", fetchedCount.get());
             
             logger.infof("Processed %d movies: fetched=%d, saved=%d, errors=%d", 
                     fetchedCount.get(), fetchedCount.get(), savedCount.get(), errorCount.get());

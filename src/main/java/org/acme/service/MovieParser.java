@@ -21,13 +21,12 @@ import org.acme.model.VScopeParseResult;
 import org.jboss.logging.Logger;
 import org.acme.entity.Movie;
 import org.acme.enums.MovieStatus;
-import org.acme.util.JacksonUtils;
+import org.acme.enums.MovieField;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,6 +34,79 @@ import jakarta.enterprise.context.ApplicationScoped;
 
 @ApplicationScoped
 public class MovieParser {
+
+    /**
+     * 统一从.content区块解析所有电影字段，支持多语言字段名
+     */
+    private void parseFieldsFromContentDiv(Element contentDiv, Movie movie) {
+        Elements detailItems = contentDiv.select(".detail-item > div");
+        for (Element detailItem : detailItems) {
+            Elements spans = detailItem.select("span");
+            if (spans.size() >= 2) {
+                String label = spans.get(0).text().replace(":", "").trim();
+                String value = spans.get(1).text().trim();
+                java.util.Optional<org.acme.enums.MovieField> fieldOpt = org.acme.enums.MovieField.fromLabel(label);
+                if (fieldOpt.isPresent()) {
+                    switch (fieldOpt.get()) {
+                        case CODE -> movie.code = value;
+                        case RELEASE_DATE -> movie.releaseDate = value;
+                        case DURATION -> movie.duration = value;
+                        case ACTRESSES -> {
+                            List<String> actresses = new ArrayList<>();
+                            Elements actressLinks = spans.get(1).select("a");
+                            if (!actressLinks.isEmpty()) {
+                                for (Element a : actressLinks) {
+                                    String actressName = a.text().trim();
+                                    if (!actressName.isEmpty()) {
+                                        actresses.add(actressName);
+                                    }
+                                }
+                            } else {
+                                for (String name : value.split(",|，|/|、| ")) {
+                                    if (!name.trim().isEmpty()) actresses.add(name.trim());
+                                }
+                            }
+                            movie.actresses = actresses;
+                        }
+                        case GENRE -> {
+                            List<String> genres = new ArrayList<>();
+                            Elements genreLinks = spans.get(1).select("a");
+                            if (!genreLinks.isEmpty()) {
+                                for (Element a : genreLinks) {
+                                    String genre = a.text().trim();
+                                    if (!genre.isEmpty()) genres.add(genre);
+                                }
+                            } else {
+                                for (String genre : value.split(",|，|/|、| ")) {
+                                    if (!genre.trim().isEmpty()) genres.add(genre.trim());
+                                }
+                            }
+                            movie.genres = genres;
+                        }
+                        case MAKER -> movie.maker = value;
+                        case LABEL -> movie.tags = List.of(value);
+                        case TAG -> {
+                            List<String> tags = new ArrayList<>();
+                            Elements tagLinks = spans.get(1).select("a");
+                            if (!tagLinks.isEmpty()) {
+                                for (Element a : tagLinks) {
+                                    String tag = a.text().trim();
+                                    if (!tag.isEmpty()) tags.add(tag);
+                                }
+                            } else {
+                                for (String tag : value.split(",|，|/|、| ")) {
+                                    if (!tag.trim().isEmpty()) tags.add(tag.trim());
+                                }
+                            }
+                            if (movie.tags == null) movie.tags = new ArrayList<>();
+                            movie.tags.addAll(tags);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 
     private static final Logger logger = Logger.getLogger(MovieParser.class.getName());
     private final HttpClient httpClient;
@@ -98,6 +170,12 @@ public class MovieParser {
                                 movie.link = baseUrl + "/" + url;
                             }
 
+                            // 多语言字段解析
+                            Element contentDiv = item.selectFirst(".content");
+                            if (contentDiv != null) {
+                                parseFieldsFromContentDiv(contentDiv, movie);
+                            }
+
                             Element img = item.selectFirst("img");
                             if (img != null) {
                                 String thumbnail = img.attr("src");
@@ -155,75 +233,16 @@ public class MovieParser {
         try {
             Document soup = Jsoup.parse(htmlContent);
 
+            // 标题
             Element titleTag = soup.selectFirst("h1");
             if (titleTag != null) {
                 movie.title = titleTag.text().trim();
             }
 
-            Element codeTag = soup.selectFirst("span:containsOwn(コード:)");
-            if (codeTag != null) {
-                Element codeSpan = codeTag.nextElementSibling();
-                if (codeSpan != null) {
-                    movie.code = codeSpan.text().trim();
-                }
-            }
-
-            Element releaseDateTag = soup.selectFirst("span:containsOwn(リリース日:)");
-            if (releaseDateTag != null) {
-                Element releaseDateSpan = releaseDateTag.nextElementSibling();
-                if (releaseDateSpan != null) {
-                    movie.releaseDate = releaseDateSpan.text().trim();
-                }
-            }
-
-            Element durationTag = soup.selectFirst("span:containsOwn(再生時間:)");
-            if (durationTag != null) {
-                Element durationSpan = durationTag.nextElementSibling();
-                if (durationSpan != null) {
-                    movie.duration = durationSpan.text().trim();
-                }
-            }
-
-            Element actressTag = soup.selectFirst("span:containsOwn(女優:)");
-            if (actressTag != null) {
-                Element actressSpan = actressTag.nextElementSibling();
-                if (actressSpan != null) {
-                    String actressName = actressSpan.text().trim();
-                    if (!actressName.isEmpty()) {
-                        movie.actresses = List.of(actressName);
-                    }
-                }
-            }
-
-            Element genresTag = soup.selectFirst("span:containsOwn(ジャンル:)");
-            if (genresTag != null) {
-                Element genresSpan = genresTag.nextElementSibling();
-                if (genresSpan != null) {
-                    Elements genreLinks = genresSpan.select("a");
-                    movie.genres = genreLinks.stream().map(Element::text).map(String::trim).toList();
-                }
-            }
-
-            Element makerTag = soup.selectFirst("span:containsOwn(メーカー:)");
-            if (makerTag != null) {
-                Element makerSpan = makerTag.nextElementSibling();
-                if (makerSpan != null) {
-                    String makerName = makerSpan.text().trim();
-                    if (!makerName.isEmpty()) {
-                        movie.maker = makerName;
-                    }
-                }
-            }
-
-            Element seriesTag = soup.selectFirst("span:containsOwn(ラベル:)");
-            if (seriesTag != null) {
-                Element seriesSpan = seriesTag.nextElementSibling();
-                if (seriesSpan != null) {
-                    String seriesName = seriesSpan.text().trim();
-                    if (!seriesName.isEmpty()) {
-                        movie.series = seriesName;
-                    }
-                }
+            // 统一解析多语言字段（支持日语、中文、英文等）
+            Element contentDiv = soup.selectFirst(".content");
+            if (contentDiv != null) {
+                parseFieldsFromContentDiv(contentDiv, movie);
             }
 
             Element likesButton = soup.selectFirst("button.favourite span[ref=counter]");
@@ -237,26 +256,6 @@ public class MovieParser {
             Element descriptionMeta = soup.selectFirst("meta[name=description]");
             if (descriptionMeta != null && descriptionMeta.hasAttr("content")) {
                 movie.description = descriptionMeta.attr("content").trim();
-            }
-
-            Element tagsTag = soup.selectFirst("span:containsOwn(タグ:)");
-            if (tagsTag != null) {
-                Element tagsSpan = tagsTag.nextElementSibling();
-                if (tagsSpan != null) {
-                    Elements tagLinks = tagsSpan.select("a");
-                    movie.tags = tagLinks.stream().map(Element::text).map(String::trim).toList();
-                }
-            }
-
-            Element directorTag = soup.selectFirst("span:containsOwn(監督:)");
-            if (directorTag != null) {
-                Element directorSpan = directorTag.nextElementSibling();
-                if (directorSpan != null) {
-                    String directorName = directorSpan.text().trim();
-                    if (!directorName.isEmpty()) {
-                        movie.director = directorName;
-                    }
-                }
             }
 
             Element videoTag = soup.selectFirst("video");
