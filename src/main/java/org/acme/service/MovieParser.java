@@ -31,6 +31,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 @ApplicationScoped
 public class MovieParser {
@@ -109,12 +112,12 @@ public class MovieParser {
 
 
     private static final Logger logger = Logger.getLogger(MovieParser.class.getName());
-    private final HttpClient httpClient;
+    private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
 
     public MovieParser() {
-        this.httpClient = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.ALWAYS)
+        this.httpClient = new OkHttpClient.Builder()
+                .followRedirects(true)
                 .build();
         this.objectMapper = new ObjectMapper();
     }
@@ -280,56 +283,58 @@ public class MovieParser {
     public Optional<VideoUrlsResult> getVideoUrls(long videoId) {
         try {
             String ajaxUrl = String.format("https://123av.com/ja/ajax/v/%d/videos", videoId);
-            logger.info(String.format("Requesting ajax endpoint: %s", ajaxUrl));
+            logger.info("Requesting ajax endpoint: " + ajaxUrl);
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(ajaxUrl))
-                    .timeout(java.time.Duration.ofSeconds(10))
+            Request request = new Request.Builder()
+                    .url(ajaxUrl)
+                    .get()
+                    .addHeader("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36")
+                    .addHeader("accept", "application/json, text/javascript, */*; q=0.01")
+                    .addHeader("accept-language", "zh-CN,zh;q=0.9")
+                    .addHeader("cookie", "_ga=GA1.1.1641394730.1737617680; _ga_VZGC2QQBZ8=GS1.1.1744253403.22.1.1744254946.0.0.0")
+                    .addHeader("x-requested-with", "XMLHttpRequest") // 很关键！很多 AJAX 接口要求
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if (response.statusCode() != 200) {
-                logger.warn(String.format("Failed to fetch video URLs: %d", response.statusCode()));
-                return Optional.empty();
-            }
-
-            JsonNode data = objectMapper.readTree(response.body());
-            if (data.has("status") && data.get("status").asInt() == 200 && data.has("result")) {
-                JsonNode result = data.get("result");
-                List<WatchInfo> watchUrls = new ArrayList<>();
-                JsonNode watchNode = result.get("watch");
-                if (watchNode != null && watchNode.isArray()) {
-                    for (JsonNode node : watchNode) {
-                        if (node.has("index") && node.has("name") && node.has("url")) {
-                            watchUrls.add(new WatchInfo(node.get("index").asInt(), node.get("name").asText(), node.get("url").asText()));
-                        } else {
-                            logger.warn("Invalid watch URL info format in AJAX response");
-                            return Optional.empty();
-                        }
-                    }
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.warn("Failed to fetch video URLs: " + response.code());
+                    return Optional.empty();
                 }
 
-                List<DownloadInfo> downloadUrls = new ArrayList<>();
-                JsonNode downloadNode = result.get("download");
-                if (downloadNode != null && downloadNode.isArray()) {
-                    for (JsonNode node : downloadNode) {
-                        if (node.has("host") && node.has("index") && node.has("name") && node.has("url")) {
-                            downloadUrls.add(new DownloadInfo(node.get("host").asText(), node.get("index").asInt(), node.get("name").asText(), node.get("url").asText()));
-                        } else {
-                            logger.warn("Invalid download URL info format in AJAX response");
-                            return Optional.empty();
+                String body = response.body().string();
+                JsonNode data = objectMapper.readTree(body);
+
+                if (data.has("status") && data.get("status").asInt() == 200 && data.has("result")) {
+                    JsonNode result = data.get("result");
+                    List<WatchInfo> watchUrls = new ArrayList<>();
+                    JsonNode watchNode = result.get("watch");
+                    if (watchNode != null && watchNode.isArray()) {
+                        for (JsonNode node : watchNode) {
+                            if (node.has("index") && node.has("name") && node.has("url")) {
+                                watchUrls.add(new WatchInfo(node.get("index").asInt(), node.get("name").asText(), node.get("url").asText()));
+                            }
                         }
                     }
+
+                    List<DownloadInfo> downloadUrls = new ArrayList<>();
+                    JsonNode downloadNode = result.get("download");
+                    if (downloadNode != null && downloadNode.isArray()) {
+                        for (JsonNode node : downloadNode) {
+                            if (node.has("host") && node.has("index") && node.has("name") && node.has("url")) {
+                                downloadUrls.add(new DownloadInfo(node.get("host").asText(), node.get("index").asInt(), node.get("name").asText(), node.get("url").asText()));
+                            }
+                        }
+                    }
+
+                    return Optional.of(new VideoUrlsResult(watchUrls, downloadUrls));
+                } else {
+                    logger.warn("Invalid AJAX response format");
+                    return Optional.empty();
                 }
-                return Optional.of(new VideoUrlsResult(watchUrls, downloadUrls));
-            } else {
-                logger.warn("Invalid AJAX response format");
-                return Optional.empty();
             }
 
-        } catch (IOException | InterruptedException e) {
-            logger.error("Error getting video URLs: " + e.getMessage(), e);
-            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+                logger.error("Error getting videoId: " + videoId);
             return Optional.empty();
         }
     }
@@ -343,39 +348,24 @@ public class MovieParser {
     public VScopeParseResult extractM3U8FromPlayer(String playerUrl) {
         if (playerUrl == null || playerUrl.trim().isEmpty()) {
             logger.warn("Player URL is empty or null");
-            return null; // Return null instead of empty result for clarity
+            return null;
         }
 
-        try {
-            // Build the HTTP request
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(playerUrl))
-                    .timeout(Duration.ofSeconds(15)) // Request timeout
-                    .header("User-Agent", "Mozilla/5.0") // Add a User-Agent header
-                    .GET()
-                    .build();
+        Request request = new Request.Builder()
+                .url(playerUrl)
+                .get()
+                .addHeader("User-Agent", "Mozilla/5.0")
+                .build();
 
-            // Send the request and get the response
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200) {
-                logger.warnf("Failed to get player page '%s', status code: %d", playerUrl, response.statusCode());
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                logger.warnf("Failed to get player page '%s', status code: %d", playerUrl, response.code());
                 return null;
             }
 
-            return parsePlayerPage(response.body());
-        } catch (IOException | InterruptedException e) {
-            logger.errorf("Error requesting player page '%s': %s", playerUrl, e.getMessage());
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt(); // Restore interrupt status
-            }
-            return null;
-        } catch (IllegalArgumentException e) {
-            logger.errorf("Invalid URL format '%s': %s", playerUrl, e.getMessage());
-            return null;
-        } catch (Exception e) { // Catch any other unexpected errors during the process
-            logger.errorf("Unexpected error extracting M3U8 URL from '%s': %s", playerUrl, e.getMessage());
-            return null;
+            return parsePlayerPage(response.body().string());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 

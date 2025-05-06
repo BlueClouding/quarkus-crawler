@@ -1,4 +1,4 @@
-package org.acme;
+package org.acme.controller;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -109,14 +109,14 @@ public class VideoIdCrawlerController {
             logger.info("Querying for all existing movie IDs in the database...");
             List<WatchUrl> watchUrls = WatchUrl.listAll();
             logger.infof("Found %d total watch URLs in database", watchUrls.size());
-            
+
             // Extract the movie IDs
             for (WatchUrl watchUrl : watchUrls) {
                 if (watchUrl.getMovieId() != null) {
                     existingIds.add(watchUrl.getMovieId().longValue());
                 }
             }
-            
+
             logger.infof("Extracted %d unique movie IDs from database", existingIds.size());
         } catch (Exception e) {
             logger.errorf("Error querying database for existing IDs: %s", e.getMessage());
@@ -175,13 +175,13 @@ public class VideoIdCrawlerController {
 
                 // If all IDs in this batch were skipped, continue to next batch
                 if (batchFutures.isEmpty()) {
-                    logger.infof("All %d IDs in batch %d to %d already exist, skipping to next batch", 
+                    logger.infof("All %d IDs in batch %d to %d already exist, skipping to next batch",
                             (batchEnd - batchStart + 1), batchStart, batchEnd);
                     continue;
                 }
-                
+
                 if (batchSkipped > 0) {
-                    logger.infof("Skipped %d/%d IDs in batch %d to %d", 
+                    logger.infof("Skipped %d/%d IDs in batch %d to %d",
                             batchSkipped, (batchEnd - batchStart + 1), batchStart, batchEnd);
                 }
 
@@ -198,7 +198,7 @@ public class VideoIdCrawlerController {
                 totalProcessed += batchFutures.size();
                 logger.infof("Completed batch from %d to %d, processed %d IDs", batchStart, batchEnd, batchFutures.size());
             }
-            
+
             logger.infof("Batch processing complete. Total processed: %d, Total skipped: %d", totalProcessed, totalSkipped);
         } catch (Exception e) {
             logger.errorf("Unexpected error during batch processing: %s", e.getMessage());
