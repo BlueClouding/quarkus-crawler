@@ -1,4 +1,4 @@
-package org.acme;
+package org.acme.controller;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -27,18 +27,18 @@ public class FavouriteController {
 
     /**
      * Add or remove a single movie to/from favourites
-     * 
+     *
      * @param request The favourite request containing action, type, and id
      * @return Response with the result of the operation
      */
     @POST
     public Response processFavourite(FavouriteRequest request) {
-        logger.infof("Processing favourite request: action=%s, type=%s, id=%d", 
+        logger.infof("Processing favourite request: action=%s, type=%s, id=%d",
                 request.getAction(), request.getType(), request.getId());
-        
+
         try {
             FavouriteResponse response = favouriteService.processFavourite(request);
-            
+
             if (response.isSuccess()) {
                 return Response.ok(response).build();
             } else {
@@ -53,7 +53,7 @@ public class FavouriteController {
 
     /**
      * Process favourites for a range of movie IDs
-     * 
+     *
      * @param startId The ID to start from
      * @param endId The ID to end at
      * @param action The action to perform (add or remove)
@@ -65,13 +65,13 @@ public class FavouriteController {
             @QueryParam("startId") Long startId,
             @QueryParam("endId") Long endId,
             @QueryParam("action") @DefaultValue("add") String action) {
-        
-        logger.infof("Processing favourites for range: startId=%d, endId=%d, action=%s", 
+
+        logger.infof("Processing favourites for range: startId=%d, endId=%d, action=%s",
                 startId, endId, action);
-        
+
         try {
             Map<Long, FavouriteResponse> results = favouriteService.processFavouritesForRange(startId, endId, action);
-            
+
             return Response.ok(results).build();
         } catch (Exception e) {
             logger.errorf("Error processing favourites for range: %s", e.getMessage());

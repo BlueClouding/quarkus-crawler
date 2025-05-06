@@ -1,4 +1,4 @@
-package org.acme;
+package org.acme.controller;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -34,7 +34,7 @@ public class CollectionProcessController {
 
     /**
      * Process a single batch of movies
-     * 
+     *
      * @param startId The ID to start processing from
      * @param batchSize The number of movies to process in this batch
      * @return Response with the results of the batch processing
@@ -44,23 +44,23 @@ public class CollectionProcessController {
     public Response processBatch(
             @QueryParam("startId") @DefaultValue("1") Long startId,
             @QueryParam("batchSize") @DefaultValue("120") int batchSize) {
-        
+
         if (isRunning) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(new ProcessResponse("Collection processing is already running"))
                     .build();
         }
-        
+
         // Initialize the executor with a fixed thread pool
         if (executor == null || executor.isShutdown()) {
             executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         }
-        
+
         // Set running flag
         isRunning = true;
-        
+
         logger.infof("Processing batch: startId=%d, batchSize=%d", startId, batchSize);
-        
+
         try {
             CompletableFuture.runAsync(() -> {
                 collectionProcessService.processBatch(startId, batchSize);
@@ -73,10 +73,10 @@ public class CollectionProcessController {
                     .build();
         }
     }
-    
+
     /**
      * Add a range of movie IDs to favourites
-     * 
+     *
      * @param startId The ID to start from
      * @param endId The ID to end at
      * @return Response with the results of adding to favourites
@@ -87,30 +87,30 @@ public class CollectionProcessController {
             @QueryParam("startId") @DefaultValue("1") Long startId,
             @QueryParam("endId") Long endId,
             @QueryParam("batchSize") @DefaultValue("120") int batchSize) {
-        
+
         if (isRunning) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(new ProcessResponse("Collection processing is already running"))
                     .build();
         }
-        
+
         // Calculate endId if not provided
         if (endId == null) {
             endId = startId + batchSize - 1;
         }
-        
+
         // Initialize the executor with a fixed thread pool
         if (executor == null || executor.isShutdown()) {
             executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         }
-        
+
         // Set running flag
         isRunning = true;
-        
+
         logger.infof("Adding favourites: startId=%d, endId=%d", startId, endId);
-        
+
         final Long finalEndId = endId; // Need final variable for lambda
-        
+
         try {
             CompletableFuture.runAsync(() -> {
                 try {
@@ -129,32 +129,32 @@ public class CollectionProcessController {
                     .build();
         }
     }
-    
+
     /**
      * Process collection pages and save movies to database
-     * 
+     *
      * @return Response with the results of processing
      */
     @POST
     @Path("/process-collection")
     public Response processCollection() {
-        
+
         if (isRunning) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(new ProcessResponse("Collection processing is already running"))
                     .build();
         }
-        
+
         // Initialize the executor with a fixed thread pool
         if (executor == null || executor.isShutdown()) {
             executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         }
-        
+
         // Set running flag
         isRunning = true;
-        
+
         logger.info("Processing all collection pages");
-        
+
         try {
             CompletableFuture.runAsync(() -> {
                 try {
@@ -173,10 +173,10 @@ public class CollectionProcessController {
                     .build();
         }
     }
-    
+
     /**
      * Remove a range of movie IDs from favourites
-     * 
+     *
      * @param startId The ID to start from
      * @param endId The ID to end at
      * @return Response with the results of removing from favourites
@@ -187,30 +187,30 @@ public class CollectionProcessController {
             @QueryParam("startId") @DefaultValue("1") Long startId,
             @QueryParam("endId") Long endId,
             @QueryParam("batchSize") @DefaultValue("120") int batchSize) {
-        
+
         if (isRunning) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(new ProcessResponse("Collection processing is already running"))
                     .build();
         }
-        
+
         // Calculate endId if not provided
         if (endId == null) {
             endId = startId + batchSize - 1;
         }
-        
+
         // Initialize the executor with a fixed thread pool
         if (executor == null || executor.isShutdown()) {
             executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         }
-        
+
         // Set running flag
         isRunning = true;
-        
+
         logger.infof("Removing favourites: startId=%d, endId=%d", startId, endId);
-        
+
         final Long finalEndId = endId; // Need final variable for lambda
-        
+
         try {
             CompletableFuture.runAsync(() -> {
                 try {
@@ -229,10 +229,10 @@ public class CollectionProcessController {
                     .build();
         }
     }
-    
+
     /**
      * Automatically remove all processed movie IDs from favourites using multiple threads
-     * 
+     *
      * @param batchSize The size of each batch to process
      * @param threadCount The number of threads to use
      * @return Response with the results of the auto-removal process
@@ -242,18 +242,18 @@ public class CollectionProcessController {
     public Response autoRemoveProcessedIds(
             @QueryParam("batchSize") @DefaultValue("50") int batchSize,
             @QueryParam("threadCount") @DefaultValue("5") int threadCount) {
-        
+
         if (isRunning) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(new ProcessResponse("Collection processing is already running"))
                     .build();
         }
-        
+
         // Set running flag
         isRunning = true;
-        
+
         logger.infof("Starting auto-removal with batchSize=%d, threadCount=%d", batchSize, threadCount);
-        
+
         try {
             CompletableFuture.runAsync(() -> {
                 try {
@@ -276,7 +276,7 @@ public class CollectionProcessController {
 
     /**
      * Process multiple batches asynchronously
-     * 
+     *
      * @param startId The ID to start processing from
      * @param batchSize The number of movies to process in each batch
      * @param batchCount The number of batches to process
@@ -288,67 +288,67 @@ public class CollectionProcessController {
             @QueryParam("startId") @DefaultValue("1") Long startId,
             @QueryParam("batchSize") @DefaultValue("120") int batchSize,
             @QueryParam("batchCount") @DefaultValue("1") int batchCount) {
-        
+
         if (isRunning) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(new ProcessResponse("Collection processing is already running"))
                     .build();
         }
-        
+
         // Initialize the executor with a fixed thread pool
         if (executor == null || executor.isShutdown()) {
             executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         }
-        
+
         // Set running flag
         isRunning = true;
-        
-        logger.infof("Starting multiple batch processing: startId=%d, batchSize=%d, batchCount=%d", 
+
+        logger.infof("Starting multiple batch processing: startId=%d, batchSize=%d, batchCount=%d",
                 startId, batchSize, batchCount);
-        
+
         // Start the processing in a separate thread to not block the response
         CompletableFuture.runAsync(() -> {
             try {
                 logger.info("Starting batch processing in background thread with parallel execution...");
-                
+
                 // Calculate total number of tasks
                 int totalTasks = batchCount;
                 logger.infof("Total tasks to process: %d", totalTasks);
-                
+
                 // Process in batches of TASKS_PER_THREAD
                 for (int batchOffset = 0; batchOffset < totalTasks; batchOffset += TASKS_PER_THREAD) {
                     // Calculate how many tasks to process in this batch (handle the last batch which might be smaller)
                     int tasksInThisBatch = Math.min(TASKS_PER_THREAD, totalTasks - batchOffset);
                     logger.infof("Processing batch of %d tasks starting at offset %d", tasksInThisBatch, batchOffset);
-                    
+
                     // Create a list to hold all the futures for this batch
                     List<CompletableFuture<Map<String, Object>>> futures = new ArrayList<>();
-                    
+
                     // Create a CompletableFuture for each task in this batch
                     for (int i = 0; i < tasksInThisBatch; i++) {
                         final int taskIndex = batchOffset + i;
                         final Long currentStartId = startId + (taskIndex * batchSize);
-                        
+
                         // Create a CompletableFuture for this task
                         CompletableFuture<Map<String, Object>> future = CompletableFuture.supplyAsync(() -> {
                             logger.infof("Processing task %d with startId %d", taskIndex, currentStartId);
                             return collectionProcessService.processBatch(currentStartId, batchSize);
                         }, executor);
-                        
+
                         futures.add(future);
                     }
-                    
+
                     // Wait for all tasks in this batch to complete
                     CompletableFuture<Void> allFutures = CompletableFuture.allOf(
                             futures.toArray(new CompletableFuture[0])
                     );
-                    
+
                     // Block until all tasks in this batch are complete
                     allFutures.join();
-                    
+
                     logger.infof("Completed batch of %d tasks", tasksInThisBatch);
                 }
-                
+
                 logger.infof("Completed processing all %d batches in parallel", totalTasks);
             } catch (Exception e) {
                 logger.errorf("Error during batch processing: %s", e.getMessage());
@@ -358,11 +358,11 @@ public class CollectionProcessController {
                 logger.info("Collection processing completed.");
             }
         });
-        
+
         return Response.ok(new ProcessResponse("Collection processing started with batch size " + batchSize + " and batch count " + batchCount))
                 .build();
     }
-    
+
     /**
      * Get the current status of the collection processing
      * @return Response with processing status
@@ -373,7 +373,7 @@ public class CollectionProcessController {
         return Response.ok(new ProcessResponse(isRunning ? "Collection processing is running" : "Collection processing is not running"))
                 .build();
     }
-    
+
     /**
      * Stop the collection processing if it's running
      * @return Response indicating if the processing was stopped
@@ -386,22 +386,22 @@ public class CollectionProcessController {
                     .entity(new ProcessResponse("Collection processing is not running"))
                     .build();
         }
-        
+
         if (executor != null && !executor.isShutdown()) {
             executor.shutdownNow();
             isRunning = false;
         }
-        
+
         return Response.ok(new ProcessResponse("Collection processing stopped"))
                 .build();
     }
-    
+
     /**
      * Simple response object
      */
     public static class ProcessResponse {
         public String message;
-        
+
         public ProcessResponse(String message) {
             this.message = message;
         }

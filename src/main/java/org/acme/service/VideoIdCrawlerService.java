@@ -50,7 +50,7 @@ public class VideoIdCrawlerService {
 
                 // Save watch and download URLs
                 try {
-                    processVideoUrls(urlsResult);
+                    processVideoUrls(urlsResult, (int) videoId);
                     logger.infof("Successfully saved video ID: %d", videoId);
                 } catch (Exception e) {
                     logger.errorf("Error saving video ID %d: %s", videoId, e.getMessage());
@@ -65,7 +65,7 @@ public class VideoIdCrawlerService {
         }
     }
 
-    private void processVideoUrls(MovieParser.VideoUrlsResult urlsResult) {
+    private void processVideoUrls(MovieParser.VideoUrlsResult urlsResult, int index) {
         // Check if there are watch URLs to process
         if (urlsResult.watch() != null && !urlsResult.watch().isEmpty()) {
             // Iterate through the list of WatchInfo objects
@@ -76,10 +76,12 @@ public class VideoIdCrawlerService {
                 if (watchUrl == null) {
                     // Create a new WatchUrl instance
                     watchUrl = new WatchUrl();
-                    watchUrl.setMovieId(m3u8Result.getVideoId());
+                    watchUrl.setMovieId(index);
                 }
                 watchUrl.setUrl(m3u8Result.getStream());
                 watchUrl.setIndex(watchInfo.index());
+                watchUrl.setName(watchInfo.name());
+                watchUrl.setOriginalUrl(watchInfo.url());
                 watchUrl.persist();
             }
         }

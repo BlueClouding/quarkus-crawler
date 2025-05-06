@@ -1,4 +1,4 @@
-package org.acme;
+package org.acme.controller;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,7 +30,7 @@ public class GenrePageResource {
             // 激活请求上下文
             ManagedContext requestContext = Arc.container().requestContext();
             requestContext.activate();
-            
+
             logger.info("Starting processGenresPages task for taskId: " + taskId);
             try {
                 genrePageService.processGenresPages(taskId);

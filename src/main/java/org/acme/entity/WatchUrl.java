@@ -16,6 +16,9 @@ public class WatchUrl extends PanacheEntity {
     @Column(nullable = false)
     public String url;
 
+    @Column(name = "original_url")
+    public String originalUrl;
+
     public String name;
 
     // 'index' 是 SQL 保留关键字。可以在数据库中用反引号包裹或映射成其他字段名
@@ -65,5 +68,11 @@ public class WatchUrl extends PanacheEntity {
         this.createdAt = createdAt;
     }
 
-    
+    public String getOriginalUrl() {
+        return originalUrl;
+    }
+
+    public void setOriginalUrl(String originalUrl) {
+        this.originalUrl = originalUrl;
+    }
 }
