@@ -2,7 +2,6 @@ package org.acme.controller;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -142,7 +141,7 @@ public class VideoIdCrawlerController {
                 int batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endId);
                 logger.infof("Processing batch from %d to %d", batchStart, batchEnd);
 
-                List<Future<?>> batchFutures = new ArrayList<>();
+                List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
                 int batchSkipped = 0;
 
                 // Submit each ID in the batch as a separate task, skipping existing IDs
@@ -156,7 +155,7 @@ public class VideoIdCrawlerController {
                         continue;
                     }
 
-                    Future<?> future = executor.submit(() -> {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                         try {
                             logger.infof("Processing video ID %d", videoId);
                             videoIdCrawlerService.processVideoById(videoId);
@@ -169,6 +168,10 @@ public class VideoIdCrawlerController {
                             logger.errorf("Error processing video ID %d: %s", videoId, e.getMessage());
                             logger.error("Stack trace:", e);
                         }
+                    }, executor).exceptionally(ex -> {
+                        logger.errorf("Exception in CompletableFuture for video ID %d: %s", videoId, ex.getMessage());
+                        logger.error("Stack trace:", ex);
+                        return null;
                     });
                     batchFutures.add(future);
                 }
@@ -186,13 +189,15 @@ public class VideoIdCrawlerController {
                 }
 
                 // Wait for all tasks in this batch to complete before starting the next batch
-                for (Future<?> future : batchFutures) {
-                    try {
-                        future.get(); // Wait for completion
-                    } catch (Exception e) {
-                        logger.error("Error waiting for task completion", e);
-                        logger.error("Stack trace:", e);
-                    }
+                try {
+                    // Convert list to array for allOf
+                    @SuppressWarnings("unchecked")
+                    CompletableFuture<Void>[] futuresArray = batchFutures.toArray(new CompletableFuture[0]);
+                    // Wait for all CompletableFutures to complete
+                    CompletableFuture.allOf(futuresArray).join();
+                } catch (Exception e) {
+                    logger.error("Error waiting for batch completion", e);
+                    logger.error("Stack trace:", e);
                 }
 
                 totalProcessed += batchFutures.size();

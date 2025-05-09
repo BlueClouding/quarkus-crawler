@@ -284,15 +284,11 @@ public class MovieParser {
             String ajaxUrl = String.format("https://123av.com/ja/ajax/v/%d/videos", videoId);
             logger.info("Requesting ajax endpoint: " + ajaxUrl);
 
-            Request request = new Request.Builder()
-                    .url(ajaxUrl)
-                    .get()
-                    .addHeader("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36")
-                    .addHeader("accept", "application/json, text/javascript, */*; q=0.01")
-                    .addHeader("accept-language", "zh-CN,zh;q=0.9")
-                    .addHeader("cookie", "_ga=GA1.1.1641394730.1737617680; _ga_VZGC2QQBZ8=GS1.1.1744253403.22.1.1744254946.0.0.0")
-                    .addHeader("x-requested-with", "XMLHttpRequest") // 很关键！很多 AJAX 接口要求
-                    .build();
+            String cookieString = "_ga=GA1.1.1641394730.1737617680; _ga_VZGC2QQBZ8=GS1.1.1744253403.22.1.1744254946.0.0.0";
+            boolean isJsonContent = true; // This is a JSON AJAX request
+            
+            // Use HttpClientUtils to create a request with common headers for JSON content
+            Request request = org.acme.util.HttpClientUtils.createRequestBuilder(ajaxUrl, cookieString, isJsonContent).build();
 
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
@@ -350,11 +346,11 @@ public class MovieParser {
             return null;
         }
 
-        Request request = new Request.Builder()
-                .url(playerUrl)
-                .get()
-                .addHeader("User-Agent", "Mozilla/5.0")
-                .build();
+        // Use HttpClientUtils to create a request with common headers
+        // This is a regular HTML request, not a JSON/AJAX request
+        String cookieString = ""; // No specific cookies needed
+        boolean isJsonContent = false; // This is a regular HTML request
+        Request request = org.acme.util.HttpClientUtils.createRequestBuilder(playerUrl, cookieString, isJsonContent).build();
 
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {

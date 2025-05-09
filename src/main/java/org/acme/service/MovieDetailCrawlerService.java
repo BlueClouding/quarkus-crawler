@@ -7,10 +7,9 @@ import org.acme.entity.Movie;
 import org.jboss.logging.Logger;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import java.util.Optional;
 
 @ApplicationScoped
@@ -21,12 +20,12 @@ public class MovieDetailCrawlerService {
     @Inject
     MovieParser movieParser;
 
-    private final HttpClient httpClient;
+    private final OkHttpClient httpClient;
 
     @Inject
     public MovieDetailCrawlerService() {
-        this.httpClient = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
+        this.httpClient = new OkHttpClient.Builder()
+                .followRedirects(true)
                 .build();
     }
 
@@ -43,26 +42,30 @@ public class MovieDetailCrawlerService {
 
         try {
             logger.infof("Fetching details for movie: %s", url);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(java.time.Duration.ofSeconds(30))
-                    .GET()
+            Request request = new Request.Builder()
+                    .url(url)
+                    .get()
+                    .addHeader("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36")
+                    .addHeader("accept", "application/json, text/javascript, */*; q=0.01")
+                    .addHeader("accept-language", "zh-CN,zh;q=0.9")
+                    .addHeader("cookie", "_ga=GA1.1.1641394730.1737617680; _ga_VZGC2QQBZ8=GS1.1.1744253403.22.1.1744254946.0.0.0")
+                    .addHeader("x-requested-with", "XMLHttpRequest")
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.errorf("Failed to fetch movie details for %s: HTTP %d", url, response.code());
+                    return null;
+                }
 
-            if (response.statusCode() != 200) {
-                logger.errorf("Failed to fetch movie details for %s: HTTP %d", url, response.statusCode());
-                return null;
-            }
-
-            // Parse movie details
-            Optional<Movie> movieDetail = movieParser.parseMoviePage(movie, response.body(), url);
+                // Parse movie details
+                String responseBody = response.body().string();
+                Optional<Movie> movieDetail = movieParser.parseMoviePage(movie, responseBody, url);
             return movieDetail.orElse(null);
 
-        } catch (IOException | InterruptedException e) {
+            }
+        } catch (IOException e) {
             logger.errorf("Error processing movie %s: %s", url, e.getMessage());
-            Thread.currentThread().interrupt();
             return null;
         } catch (Exception e) {
             logger.errorf("Unexpected error processing movie %s: %s", url, e.getMessage());
