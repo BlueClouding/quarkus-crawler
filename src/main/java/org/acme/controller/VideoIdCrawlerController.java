@@ -2,12 +2,16 @@ package org.acme.controller;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+
+import io.quarkus.narayana.jta.runtime.TransactionConfiguration;
+import io.quarkus.arc.Arc;
+import io.quarkus.arc.ArcContainer;
+import io.quarkus.arc.ManagedContext;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -67,7 +71,7 @@ public class VideoIdCrawlerController {
                 // First, load all existing movie IDs into a set
                 Set<Long> existingIds;
                 try {
-                    existingIds = loadExistingMovieIds(1, startId);
+                    existingIds = loadExistingMovieIds(1, endId);
                     logger.infof("Found %d existing movie IDs in the database", existingIds.size());
                 } catch (Exception e) {
                     logger.errorf("Error loading existing movie IDs: %s", e.getMessage());
@@ -142,7 +146,7 @@ public class VideoIdCrawlerController {
                 int batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endId);
                 logger.infof("Processing batch from %d to %d", batchStart, batchEnd);
 
-                List<Future<?>> batchFutures = new ArrayList<>();
+                List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
                 int batchSkipped = 0;
 
                 // Submit each ID in the batch as a separate task, skipping existing IDs
@@ -156,7 +160,7 @@ public class VideoIdCrawlerController {
                         continue;
                     }
 
-                    Future<?> future = executor.submit(() -> {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                         try {
                             logger.infof("Processing video ID %d", videoId);
                             videoIdCrawlerService.processVideoById(videoId);
@@ -169,6 +173,10 @@ public class VideoIdCrawlerController {
                             logger.errorf("Error processing video ID %d: %s", videoId, e.getMessage());
                             logger.error("Stack trace:", e);
                         }
+                    }, executor).exceptionally(ex -> {
+                        logger.errorf("Exception in CompletableFuture for video ID %d: %s", videoId, ex.getMessage());
+                        logger.error("Stack trace:", ex);
+                        return null;
                     });
                     batchFutures.add(future);
                 }
@@ -186,13 +194,15 @@ public class VideoIdCrawlerController {
                 }
 
                 // Wait for all tasks in this batch to complete before starting the next batch
-                for (Future<?> future : batchFutures) {
-                    try {
-                        future.get(); // Wait for completion
-                    } catch (Exception e) {
-                        logger.error("Error waiting for task completion", e);
-                        logger.error("Stack trace:", e);
-                    }
+                try {
+                    // Convert list to array for allOf
+                    @SuppressWarnings("unchecked")
+                    CompletableFuture<Void>[] futuresArray = batchFutures.toArray(new CompletableFuture[0]);
+                    // Wait for all CompletableFutures to complete
+                    CompletableFuture.allOf(futuresArray).join();
+                } catch (Exception e) {
+                    logger.error("Error waiting for batch completion", e);
+                    logger.error("Stack trace:", e);
                 }
 
                 totalProcessed += batchFutures.size();
@@ -237,6 +247,152 @@ public class VideoIdCrawlerController {
         }
 
         return Response.ok(new CrawlerResponse("Video ID crawler stopped"))
+                .build();
+    }
+    
+    /**
+     * Updates the original URL prefix in all WatchUrl records asynchronously with batch processing
+     * 
+     * @param oldPrefix The current URL prefix to be replaced
+     * @param newPrefix The new URL prefix to use
+     * @param batchSize The number of records to process in each batch (default: 10)
+     * @return Response with information about the operation
+     */
+    @POST
+    @Path("/update-url-prefix")
+    public Response updateUrlPrefix(
+            @QueryParam("oldPrefix") String oldPrefix,
+            @QueryParam("newPrefix") String newPrefix,
+            @QueryParam("batchSize") @DefaultValue("10") int batchSize) {
+        
+        if (oldPrefix == null || oldPrefix.isEmpty() || newPrefix == null || newPrefix.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(new CrawlerResponse("Both oldPrefix and newPrefix parameters are required"))
+                    .build();
+        }
+        
+        if (isRunning) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(new CrawlerResponse("Another task is already running. Please wait or stop it first."))
+                    .build();
+        }
+        
+        // Initialize the executor if needed
+        if (executor == null || executor.isShutdown()) {
+            executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+        }
+        
+        // Get the total count of URLs to update
+        long totalCount;
+        try {
+            totalCount = videoIdCrawlerService.countUrlsWithPrefix(oldPrefix);
+            if (totalCount == 0) {
+                return Response.ok(new CrawlerResponse("No URLs found with prefix '" + oldPrefix + "'"))
+                       .build();
+            }
+        } catch (Exception e) {
+            logger.errorf("Error counting URLs with prefix '%s': %s", oldPrefix, e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                   .entity(new CrawlerResponse("Error counting URLs: " + e.getMessage()))
+                   .build();
+        }
+        
+        // Set running flag
+        isRunning = true;
+        
+        // Get the Arc container and request context for proper CDI in background threads
+        final ArcContainer container = Arc.container();
+        final ManagedContext requestContext = container.requestContext();
+        
+        // Start the URL update process in a separate thread with proper request context
+        CompletableFuture.runAsync(() -> {
+            // Activate request context for this thread
+            requestContext.activate();
+            try {
+                logger.infof("Starting URL prefix update from '%s' to '%s' for %d records", 
+                             oldPrefix, newPrefix, totalCount);
+                
+                int totalPages = (int) Math.ceil(totalCount / (double) batchSize);
+                int updatedCount = 0;
+                int failedCount = 0;
+                
+                // Process all batches
+                for (int page = 0; page < totalPages; page++) {
+                    if (executor.isShutdown()) {
+                        logger.info("URL update process was stopped");
+                        break;
+                    }
+                    
+                    // Get a batch of records
+                    List<WatchUrl> batch = videoIdCrawlerService.getUrlBatch(oldPrefix, batchSize, page);
+                    if (batch.isEmpty()) {
+                        break; // No more records to process
+                    }
+                    
+                    logger.infof("Processing batch %d/%d with %d records", page + 1, totalPages, batch.size());
+                    
+                    // Process each record in the batch with CompletableFuture
+                    List<CompletableFuture<Boolean>> futures = new ArrayList<>();
+                    
+                    for (WatchUrl watchUrl : batch) {
+                        CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> {
+                            try {
+                                return videoIdCrawlerService.updateSingleUrl(watchUrl, oldPrefix, newPrefix);
+                            } catch (Exception e) {
+                                logger.errorf("Error updating URL for movie ID %d: %s", 
+                                             watchUrl.getMovieId(), e.getMessage());
+                                return false;
+                            }
+                        }, executor);
+                        
+                        futures.add(future);
+                    }
+                    
+                    // Wait for all updates in this batch to complete
+                    CompletableFuture<Void> allFutures = CompletableFuture.allOf(
+                            futures.toArray(new CompletableFuture[0]));
+                    
+                    try {
+                        allFutures.join(); // Wait for all to complete
+                        
+                        // Count successful updates
+                        for (CompletableFuture<Boolean> future : futures) {
+                            try {
+                                if (future.get()) {
+                                    updatedCount++;
+                                } else {
+                                    failedCount++;
+                                }
+                            } catch (Exception e) {
+                                failedCount++;
+                                logger.error("Error getting future result", e);
+                            }
+                        }
+                        
+                        logger.infof("Completed batch %d/%d. Progress: %d/%d records updated", 
+                                     page + 1, totalPages, updatedCount, totalCount);
+                        
+                    } catch (Exception e) {
+                        logger.errorf("Error waiting for batch %d completion: %s", page + 1, e.getMessage());
+                    }
+                }
+                
+                logger.infof("URL prefix update completed. Updated %d records, failed %d records", 
+                             updatedCount, failedCount);
+                
+            } catch (Exception e) {
+                logger.errorf("Error during URL prefix update: %s", e.getMessage());
+                logger.error("Stack trace:", e);
+            } finally {
+                isRunning = false;
+                // Clean up the request context when done
+                requestContext.terminate();
+            }
+        });
+        
+        return Response.ok(new CrawlerResponse(String.format(
+                "Started updating URLs with prefix '%s' to '%s'. Found %d URLs to process. Check logs for progress.", 
+                oldPrefix, newPrefix, totalCount)))
                 .build();
     }
 

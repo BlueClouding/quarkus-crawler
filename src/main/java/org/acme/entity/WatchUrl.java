@@ -13,7 +13,6 @@ public class WatchUrl extends PanacheEntity {
     @Column(name = "movie_id", nullable = false)
     public Integer movieId;
 
-    @Column(nullable = false)
     public String url;
 
     @Column(name = "original_url")
@@ -22,11 +21,13 @@ public class WatchUrl extends PanacheEntity {
     public String name;
 
     // 'index' 是 SQL 保留关键字。可以在数据库中用反引号包裹或映射成其他字段名
-    @Column(name = "`index`", nullable = false)
+    @Column(name = "`index`")
     public Integer index;
 
     @Column(name = "created_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     public ZonedDateTime createdAt = ZonedDateTime.now();
+
+    public String status;
 
     public Integer getMovieId() {
         return movieId;
@@ -74,5 +75,13 @@ public class WatchUrl extends PanacheEntity {
 
     public void setOriginalUrl(String originalUrl) {
         this.originalUrl = originalUrl;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

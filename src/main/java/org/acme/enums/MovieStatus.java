@@ -3,6 +3,7 @@ package org.acme.enums;
 public enum MovieStatus {
     NEW("new"),
     PROCESSING("processing"),
+    NO_RESULT("noResult"),
     FAILED("failed"),
     ONLINE("online"),
     OFFLINE("offline");
