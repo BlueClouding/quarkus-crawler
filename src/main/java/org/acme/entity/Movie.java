@@ -8,11 +8,15 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "movies")
 public class Movie extends PanacheEntity {
 
+    @Column(name = "movie_uuid", nullable = false, unique = true)
+    public UUID movieUuid = UUID.randomUUID();
+    
     @Column(length = 50, nullable = false, unique = true)
     public String code;
 
@@ -83,6 +87,14 @@ public class Movie extends PanacheEntity {
 
     @Column(name = "series", columnDefinition = "text")
     public String series;
+
+    public UUID getMovieUuid() {
+        return movieUuid;
+    }
+    
+    public void setMovieUuid(UUID movieUuid) {
+        this.movieUuid = movieUuid;
+    }
 
     public String getCode() {
         return code;

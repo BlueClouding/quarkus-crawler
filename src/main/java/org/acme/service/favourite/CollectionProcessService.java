@@ -202,12 +202,8 @@ public class CollectionProcessService {
             List<CompletableFuture<List<Movie>>> futures = new ArrayList<>();
 
             for (List<Integer> batch : pageBatches) {
-                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                CompletableFuture<List<Movie>> future = CompletableFuture.supplyAsync(() -> {
                     List<Movie> batchMovies = new ArrayList<>();
-                    List<Long> batchProcessedIds = new ArrayList<>();
-                    int batchFetchCount = 0;
-                    int batchSaveCount = 0;
-                    int batchErrorCount = 0;
                     
                     logger.infof("Processing page batch: %d to %d", batch.get(0), batch.get(batch.size() - 1));
 
@@ -232,7 +228,7 @@ public class CollectionProcessService {
                             }
                         } catch (Exception e) {
                             logger.errorf("Error processing page %d: %s", page, e.getMessage());
-                            batchErrorCount++;
+                            errorCount.incrementAndGet();
                         }
                     }
 

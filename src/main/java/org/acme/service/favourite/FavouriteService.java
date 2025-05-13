@@ -12,7 +12,9 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.MediaType;
 import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +33,7 @@ public class FavouriteService {
     private static final int BATCH_SIZE = 50; // Number of IDs to process in each batch
     
     private final OkHttpClient httpClient;
+    private final ExecutorService favouriteThreadPool;
     
     // Cookie string for authentication - in a real application, this would be managed properly
     private static final String COOKIE_STRING = "_ga=GA1.1.102313145.1744379567; dom3ic8zudi28v8lr6fgphwffqoz0j6c=074613d3-a62f-4b54-9e34-57d7d7215ec0%3A1%3A1; remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d=336255%7CuICKPKngTFAtH1xtQ8sAUD5vcWj1DfyXvIqd58W0kWmsQjPudM4ZOTkVK0Th%7C%242y%2412%24MrWKIiD0dnB.ALudK1g7Se.CGkahhbqcVmnhLAib6x8eu8mvsPWsu; locale=zh; session=q2cQvi0CshyKvHkZTVQYToCwpHahZ2mMpVZAhTvX; _ga_VZGC2QQBZ8=GS1.1.1744450092.3.1.1744450183.0.0.0; x-token=36e90443ed5a3626c1a6b3d65deb8e23";

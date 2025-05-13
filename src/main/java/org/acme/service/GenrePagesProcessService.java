@@ -121,7 +121,7 @@ public class GenrePagesProcessService {
                     .addHeader("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36")
                     .addHeader("accept", "application/json, text/javascript, */*; q=0.01")
                     .addHeader("accept-language", "zh-CN,zh;q=0.9")
-                    .addHeader("cookie", "_ga=GA1.1.1641394730.1737617680; _ga_VZGC2QQBZ8=GS1.1.1744253403.22.1.1744254946.0.0.0")
+                    .addHeader("cookie", "_ga=GA1.1.1363112149.1736345509; locale=en; remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d=358075%7CfgZfypH0KzGXrqu7GkftJUbkPJiTHzi5vXD6rqOtFxR84AvlPyI4okC2xBGr%7C%242y%2412%24a4vCnvNHaaRhs27lVnsQiewF%2FZ660tcdkKBfTGwD3SwHmNa.5qlH.; session=Z97mK3D7kkNfSMKYI56wumMypDQRGnTo624sG7T6; x-token=685e5019136fc8e1b78321554f17983a; _ga_VZGC2QQBZ8=GS2.1.s1747148723$o53$g1$t1747148778$j0$l0$h0")
                     .addHeader("x-requested-with", "XMLHttpRequest")
                     .build();
             
