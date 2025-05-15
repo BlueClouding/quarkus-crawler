@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subtitle Translation Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        form {
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            min-height: 200px;
+            font-family: monospace;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #result {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: #fff;
+            min-height: 200px;
+        }
+        #translatedContent {
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        #spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #3498db;
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <h1>Subtitle Translation Tool</h1>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>File Upload</h2>
+            <form id="fileUploadForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="file">Subtitle File:</label>
+                    <input type="file" id="file" name="file" accept=".srt,.sub,.vtt,.txt">
+                </div>
+                <div class="form-group">
+                    <label for="fileSourceLanguage">Source Language:</label>
+                    <select id="fileSourceLanguage" name="sourceLanguage">
+                        <option value="Chinese">Chinese</option>
+                        <option value="English">English</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="Russian">Russian</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="fileTargetLanguage">Target Language:</label>
+                    <select id="fileTargetLanguage" name="targetLanguage">
+                        <option value="English">English</option>
+                        <option value="Chinese">Chinese</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="Russian">Russian</option>
+                    </select>
+                </div>
+                <button type="submit">Translate File</button>
+            </form>
+            
+            <div id="fileResult">
+                <h3>Translation Result</h3>
+                <div id="fileResponse"></div>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Text Input</h2>
+            <form id="textForm">
+                <div class="form-group">
+                    <label for="subtitleContent">Subtitle Content:</label>
+                    <textarea id="subtitleContent" name="subtitleContent" placeholder="Paste your subtitle content here..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="sourceLanguage">Source Language:</label>
+                    <select id="sourceLanguage" name="sourceLanguage">
+                        <option value="Chinese">Chinese</option>
+                        <option value="English">English</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="Russian">Russian</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="targetLanguage">Target Language:</label>
+                    <select id="targetLanguage" name="targetLanguage">
+                        <option value="English">English</option>
+                        <option value="Chinese">Chinese</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="Russian">Russian</option>
+                    </select>
+                </div>
+                <button type="submit">Translate Text</button>
+            </form>
+            
+            <div id="result">
+                <h3>Translation Result</h3>
+                <pre id="translatedContent"></pre>
+            </div>
+        </div>
+    </div>
+    
+    <div id="spinner">
+        <div class="spinner"></div>
+        <p>Translating... This may take a few moments.</p>
+    </div>
+
+    <script>
+        document.getElementById('fileUploadForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('file');
+            if (!fileInput.files[0]) {
+                alert('Please select a file to translate.');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('sourceLanguage', document.getElementById('fileSourceLanguage').value);
+            formData.append('targetLanguage', document.getElementById('fileTargetLanguage').value);
+            
+            // Show spinner
+            document.getElementById('spinner').style.display = 'block';
+            
+            fetch('/subtitle-translate/file', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide spinner
+                document.getElementById('spinner').style.display = 'none';
+                
+                const resultDiv = document.getElementById('fileResponse');
+                
+                if (data.error) {
+                    resultDiv.innerHTML = `<p style="color: red;">Error: ${data.error}</p>`;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p>Status: ${data.status}</p>
+                        <p>${data.message}</p>
+                        <p><strong>Download:</strong> <a href="${data.downloadUrl}" target="_blank">Download Translated Subtitle</a></p>
+                    `;
+                }
+            })
+            .catch(error => {
+                // Hide spinner
+                document.getElementById('spinner').style.display = 'none';
+                
+                document.getElementById('fileResponse').innerHTML = `
+                    <p style="color: red;">Error: ${error.message}</p>
+                `;
+                console.error('Error:', error);
+            });
+        });
+        
+        document.getElementById('textForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const subtitleContent = document.getElementById('subtitleContent').value;
+            if (!subtitleContent.trim()) {
+                alert('Please enter subtitle content to translate.');
+                return;
+            }
+            
+            const requestData = {
+                subtitleContent: subtitleContent,
+                sourceLanguage: document.getElementById('sourceLanguage').value,
+                targetLanguage: document.getElementById('targetLanguage').value
+            };
+            
+            // Show spinner
+            document.getElementById('spinner').style.display = 'block';
+            
+            fetch('/subtitle-translate/text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide spinner
+                document.getElementById('spinner').style.display = 'none';
+                
+                if (data.error) {
+                    document.getElementById('translatedContent').textContent = `Error: ${data.error}`;
+                } else {
+                    document.getElementById('translatedContent').textContent = data.translatedContent;
+                }
+            })
+            .catch(error => {
+                // Hide spinner
+                document.getElementById('spinner').style.display = 'none';
+                
+                document.getElementById('translatedContent').textContent = `Error: ${error.message}`;
+                console.error('Error:', error);
+            });
+        });
+    </script>
+</body>
+</html>
