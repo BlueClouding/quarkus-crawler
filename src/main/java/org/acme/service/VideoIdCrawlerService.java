@@ -1,17 +1,14 @@
 package org.acme.service;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
-import org.acme.entity.Movie;
 import org.acme.entity.WatchUrl;
 import org.acme.enums.MovieStatus;
 import org.acme.model.VScopeParseResult;
 import org.jboss.logging.Logger;
 
-import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
