@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,13 +25,15 @@ public class JacksonUtils {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     static {
+        // 注册 Java 8 日期时间模块，支持 Instant, LocalDate 等类型
+        objectMapper.registerModule(new JavaTimeModule());
+        
         // 常用配置 (可以根据项目需求调整)
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL); // 不序列化 null 值字段
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS); // 日期序列化为 ISO 8601 格式
         objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")); // 设置默认日期格式
         objectMapper.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai")); // 设置默认时区 (根据你的需求)
         objectMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES); // 反序列化时忽略未知属性
-        // 可以添加更多自定义配置，例如注册自定义模块等
     }
 
     // 禁止实例化工具类

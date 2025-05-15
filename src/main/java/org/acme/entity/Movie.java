@@ -6,25 +6,30 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "movies")
 public class Movie extends PanacheEntity {
 
+    @Column(name = "movie_uuid", nullable = false, unique = true)
+    public UUID movieUuid = UUID.randomUUID();
+    
     @Column(length = 50, nullable = false, unique = true)
     public String code;
 
     @Column(length = 50, nullable = false)
     public String duration;
 
-    @Column(length = 50)
+    @Column(name = "release_date", length = 50)
     public String releaseDate;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "cover_image_url", columnDefinition = "text")
     public String coverImageUrl;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "preview_video_url", columnDefinition = "text")
     public String previewVideoUrl;
 
     @Column(columnDefinition = "integer default 0")
@@ -41,7 +46,7 @@ public class Movie extends PanacheEntity {
     @Column(length = 255)
     public String link;
 
-    @Column(unique = true)
+    @Column(name = "original_id", unique = true)
     public Integer originalId;
 
     @Column(length = 255)
@@ -53,13 +58,13 @@ public class Movie extends PanacheEntity {
     @Column(length = 55)
     public String status;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "description", columnDefinition = "text")
     public String description;
 
-    @ElementCollection
+    @Column(columnDefinition = "varchar(255)[]")
     public List<String> tags;
 
-    @ElementCollection
+    @Column(columnDefinition = "varchar(255)[]")
     public List<String> genres;
 
     @Column(length = 55)
@@ -68,23 +73,60 @@ public class Movie extends PanacheEntity {
     @Column(length = 55)
     public String maker;
 
-    @ElementCollection
+    @Column(columnDefinition = "varchar(255)[]")
     public List<String> actresses;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "watch_urls_info", columnDefinition = "text")
     public String watchUrlsInfo;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "download_urls_info", columnDefinition = "text")
     public String downloadUrlsInfo;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "magnets", columnDefinition = "text")
     public String magnets;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "series", columnDefinition = "text")
     public String series;
+
+    public UUID getMovieUuid() {
+        return movieUuid;
+    }
+    
+    public void setMovieUuid(UUID movieUuid) {
+        this.movieUuid = movieUuid;
+    }
 
     public String getCode() {
         return code;
+    }
+
+    /**
+     * 用另一个 Movie 对象补全当前对象所有为 null 或空集合的字段
+     */
+    public void updateIfNullFields(Movie other) {
+        if (this.code == null && other.code != null) this.code = other.code;
+        if (this.duration == null && other.duration != null) this.duration = other.duration;
+        if (this.releaseDate == null && other.releaseDate != null) this.releaseDate = other.releaseDate;
+        if (this.coverImageUrl == null && other.coverImageUrl != null) this.coverImageUrl = other.coverImageUrl;
+        if (this.previewVideoUrl == null && other.previewVideoUrl != null) this.previewVideoUrl = other.previewVideoUrl;
+        if (this.likes == null && other.likes != null) this.likes = other.likes;
+        if (this.createdAt == null && other.createdAt != null) this.createdAt = other.createdAt;
+        if (this.updatedAt == null && other.updatedAt != null) this.updatedAt = other.updatedAt;
+        if (this.link == null && other.link != null) this.link = other.link;
+        if (this.originalId == null && other.originalId != null) this.originalId = other.originalId;
+        if (this.thumbnail == null && other.thumbnail != null) this.thumbnail = other.thumbnail;
+        if (this.title == null && other.title != null) this.title = other.title;
+        if (this.status == null && other.status != null) this.status = other.status;
+        if (this.description == null && other.description != null) this.description = other.description;
+        if ((this.tags == null || this.tags.isEmpty()) && other.tags != null && !other.tags.isEmpty()) this.tags = other.tags;
+        if ((this.genres == null || this.genres.isEmpty()) && other.genres != null && !other.genres.isEmpty()) this.genres = other.genres;
+        if (this.director == null && other.director != null) this.director = other.director;
+        if (this.maker == null && other.maker != null) this.maker = other.maker;
+        if ((this.actresses == null || this.actresses.isEmpty()) && other.actresses != null && !other.actresses.isEmpty()) this.actresses = other.actresses;
+        if (this.watchUrlsInfo == null && other.watchUrlsInfo != null) this.watchUrlsInfo = other.watchUrlsInfo;
+        if (this.downloadUrlsInfo == null && other.downloadUrlsInfo != null) this.downloadUrlsInfo = other.downloadUrlsInfo;
+        if (this.magnets == null && other.magnets != null) this.magnets = other.magnets;
+        if (this.series == null && other.series != null) this.series = other.series;
     }
 
     public void setCode(String code) {
@@ -262,8 +304,102 @@ public class Movie extends PanacheEntity {
     public String getSeries() {
         return series;
     }
-
+    
     public void setSeries(String series) {
         this.series = series;
+    }
+    
+    /**
+     * 根据id和另一个Movie对象批量更新非空字段
+     * 注意：集合字段(tags, genres, actresses)不在此处更新，避免类型不匹配错误
+     */
+    public void updateFieldsById(Long id, Movie other) {
+        StringBuilder sb = new StringBuilder();
+        List<Object> params = new ArrayList<>();
+        
+        // 按照实体字段顺序依次判断并添加
+        if (other.code != null) {
+            sb.append("code = ?").append(params.size() + 1).append(",");
+            params.add(other.code);
+        }
+        if (other.duration != null) {
+            sb.append("duration = ?").append(params.size() + 1).append(",");
+            params.add(other.duration);
+        }
+        if (other.releaseDate != null) {
+            sb.append("releaseDate = ?").append(params.size() + 1).append(",");
+            params.add(other.releaseDate);
+        }
+        if (other.coverImageUrl != null) {
+            sb.append("coverImageUrl = ?").append(params.size() + 1).append(",");
+            params.add(other.coverImageUrl);
+        }
+        if (other.previewVideoUrl != null) {
+            sb.append("previewVideoUrl = ?").append(params.size() + 1).append(",");
+            params.add(other.previewVideoUrl);
+        }
+        if (other.likes != null) {
+            sb.append("likes = ?").append(params.size() + 1).append(",");
+            params.add(other.likes);
+        }
+        if (other.createdAt != null) {
+            sb.append("createdAt = ?").append(params.size() + 1).append(",");
+            params.add(other.createdAt);
+        }
+        if (other.updatedAt != null) {
+            sb.append("updatedAt = ?").append(params.size() + 1).append(",");
+            params.add(other.updatedAt);
+        }
+        if (other.link != null) {
+            sb.append("link = ?").append(params.size() + 1).append(",");
+            params.add(other.link);
+        }
+        if (other.originalId != null) {
+            sb.append("originalId = ?").append(params.size() + 1).append(",");
+            params.add(other.originalId);
+        }
+        if (other.thumbnail != null) {
+            sb.append("thumbnail = ?").append(params.size() + 1).append(",");
+            params.add(other.thumbnail);
+        }
+        if (other.title != null) {
+            sb.append("title = ?").append(params.size() + 1).append(",");
+            params.add(other.title);
+        }
+        if (other.status != null) {
+            sb.append("status = ?").append(params.size() + 1).append(",");
+            params.add(other.status);
+        }
+        if (other.description != null) {
+            sb.append("description = ?").append(params.size() + 1).append(",");
+            params.add(other.description);
+        }
+        // 跳过actresses集合字段，避免类型不匹配错误
+        if (other.watchUrlsInfo != null) {
+            sb.append("watchUrlsInfo = ?").append(params.size() + 1).append(",");
+            params.add(other.watchUrlsInfo);
+        }
+        if (other.downloadUrlsInfo != null) {
+            sb.append("downloadUrlsInfo = ?").append(params.size() + 1).append(",");
+            params.add(other.downloadUrlsInfo);
+        }
+        if (other.magnets != null) {
+            sb.append("magnets = ?").append(params.size() + 1).append(",");
+            params.add(other.magnets);
+        }
+        if (other.series != null) {
+            sb.append("series = ?").append(params.size() + 1).append(",");
+            params.add(other.series);
+        }
+        // 如果没有字段需要更新，直接返回
+        if (sb.length() == 0) return;
+        
+        // 去掉最后一个逗号并添加where条件
+        sb.setLength(sb.length() - 1);
+        String query = sb.toString() + " where id = ?" + (params.size() + 1);
+        params.add(id);
+        
+        // 执行更新
+        update(query, params.toArray());
     }
 }

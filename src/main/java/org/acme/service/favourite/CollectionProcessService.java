@@ -204,6 +204,7 @@ public class CollectionProcessService {
             for (List<Integer> batch : pageBatches) {
                 CompletableFuture<List<Movie>> future = CompletableFuture.supplyAsync(() -> {
                     List<Movie> batchMovies = new ArrayList<>();
+                    
                     logger.infof("Processing page batch: %d to %d", batch.get(0), batch.get(batch.size() - 1));
 
                     for (Integer page : batch) {
