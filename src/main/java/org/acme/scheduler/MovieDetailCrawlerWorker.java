@@ -5,8 +5,11 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import org.acme.entity.Movie;
+import org.acme.entity.MovieInfo;
+import org.acme.enums.CrawlerStatus;
 import org.acme.enums.MovieStatus;
 import org.acme.service.MovieDetailCrawlerService;
+import org.acme.service.MovieInfoExtractionService;
 import org.jboss.logging.Logger;
 
 import java.util.List;
@@ -14,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+import io.netty.util.internal.StringUtil;
 import io.quarkus.scheduler.Scheduled;
 import io.quarkus.scheduler.ScheduledExecution;
 
@@ -24,6 +28,9 @@ public class MovieDetailCrawlerWorker {
 
     @Inject
     MovieDetailCrawlerService movieDetailCrawlerService;
+    
+    @Inject
+    MovieInfoExtractionService movieInfoExtractionService;
 
     private static final int BATCH_SIZE = 10; // 每次批量处理数
     private static final int THREAD_POOL_SIZE = 5; // 并发线程数
@@ -43,8 +50,8 @@ public class MovieDetailCrawlerWorker {
     }
 
     public boolean processMoviesBatch(int batchSize) {
-        // 查询电影ID列表，而不是实体对象
-        List<Movie> movies = Movie.find("status = ?1 order by id", MovieStatus.NEW.getValue())
+        // 查询电影ID列表，不过滤状态，只限制数量
+        List<Movie> movies = Movie.find("status = ?1 order by id desc", CrawlerStatus.PROCESSING.getValue())
                                 .page(0, batchSize)
                                 .list();
         
@@ -52,21 +59,36 @@ public class MovieDetailCrawlerWorker {
             return false;
         }
         
-        // 提取ID列表
-        List<Long> movieIds = movies.stream()
-                                    .map(movie -> movie.id)
+        // 提取ID列表，从链接中提取电影代码
+        List<String> movieCodes = movies.stream()
+                                    .map(movie -> {
+                                        if (movie.link != null && !movie.link.isEmpty()) {
+                                            // 从链接中提取最后一部分作为代码
+                                            // 例如：https://123av.com/zh/dm2/v/rbd-301-uncensored-leaked
+                                            // 提取为：rbd-301-uncensored-leaked
+                                            String[] parts = movie.link.split("/");
+                                            if (parts.length > 0) {
+                                                // 获取最后一个部分作为代码
+                                                String extractedCode = parts[parts.length - 1];
+                                                logger.infof("Extracted code '%s' from link: %s", extractedCode, movie.link);
+                                                return extractedCode;
+                                            }
+                                        }
+                                        // 如果链接为空或无法提取，则返回存储的代码
+                                        return movie.code;
+                                    })
                                     .collect(Collectors.toList());
         
-        logger.infof("Processing batch of %d movies", movieIds.size());
+        logger.infof("Processing batch of %d movies", movieCodes.size());
         // 使用固定大小的线程池并发处理
         var executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         try {
-            List<CompletableFuture<Void>> futures = movieIds.stream()
-                .map(movieId -> CompletableFuture.runAsync(() -> processOneMovieById(movieId), executor))
+            List<CompletableFuture<Void>> futures = movieCodes.stream()
+                .map(code -> CompletableFuture.runAsync(() -> processOneMovieByCode(code), executor))
                 .collect(Collectors.toList());
             // 等待所有任务完成
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-            logger.infof("Batch of %d movies finished successfully", movieIds.size());
+            logger.infof("Batch of %d movies finished successfully", movieCodes.size());
         } finally {
             // 关闭线程池
             executor.shutdown();
@@ -75,53 +97,42 @@ public class MovieDetailCrawlerWorker {
     }
 
     /**
-     * 处理单个电影，每个线程内都有自己的事务
-     */
-    @Transactional
-    /**
      * 处理单个电影 - 将HTTP请求与数据库事务分离
      */
-    public void processOneMovieById(Long movieId) {
-        if (movieId == null) return;
-        
-        // 先获取待处理的电影信息
-        Movie movie = Movie.findById(movieId);
-        if (movie == null) {
-            logger.warnf("Movie with id %d not found", movieId);
+    @Transactional
+    public void processOneMovieByCode(String code) {
+        if (StringUtil.isNullOrEmpty(code)) {
+            logger.warnf("Movie code is null");
             return;
         }
         
-        String movieCode = movie.getCode();
-        logger.infof("Processing movie: %s (ID: %d)", movieCode, movieId);
+        logger.infof("Processing movie code:{}", code);
         
         try {
-            // 步骤1: 在事务外执行HTTP请求，避免事务超时
-            Movie newMovieData = movieDetailCrawlerService.processMovie(movie);
+            // 步骤1: 提取电影信息到movie_info表中
+            List<MovieInfo> extractedInfos = movieInfoExtractionService.extractAndSaveAllLanguages(code);
+            logger.infof("Extracted %d language versions for movie: %s", extractedInfos.size(), code);
             
-            // 步骤2: 在新事务中更新数据库
-            updateMovieInTransaction(movieId, newMovieData);
+            // 步骤2: 更新Movie表中的状态为已处理
+            updateMovieStatusToProcessed(code);
             
-            logger.infof("Successfully processed movie: %s", movieCode);
+            logger.infof("Successfully processed movie: %s", code);
         } catch (Exception e) {
-            logger.errorf("Failed to process movie %s: %s", movieCode, e.getMessage());
-            updateMovieStatusToFailed(movieId);
+            logger.errorf("Failed to process movie %s: %s", code, e.getMessage());
+            updateMovieStatusToFailed(code);
         }
     }
     
     /**
-     * 在新事务中更新电影数据
+     * 在新事务中更新电影状态为已处理
      */
     @Transactional
-    void updateMovieInTransaction(Long movieId, Movie newMovieData) {
-        Movie movie = Movie.findById(movieId);
-        if (movie != null) {
-            // 先用新数据补全当前实体的空字段
-            movie.updateIfNullFields(newMovieData);
-            movie.setStatus(MovieStatus.PROCESSING.getValue());
-            
-            // 使用updateFieldsById更新所有非空字段
-            // 这样可以更新多个字段，而不仅仅是状态字段
-            movie.updateFieldsById(movieId, newMovieData);
+    void updateMovieStatusToProcessed(String code) {
+        try {
+            Movie.update("status = ?1 where code = ?2", MovieStatus.SUCCEED.getValue(), code);
+            logger.infof("Updated movie with code %s status to ONLINE", code);
+        } catch (Exception ex) {
+            logger.errorf("Failed to update movie status to ONLINE: %s", ex.getMessage());
         }
     }
     
@@ -129,11 +140,12 @@ public class MovieDetailCrawlerWorker {
      * 在新事务中更新电影状态为失败
      */
     @Transactional
-    void updateMovieStatusToFailed(Long movieId) {
+    void updateMovieStatusToFailed(String code) {
         try {
-            Movie.update("status = ?1 where id = ?2", MovieStatus.FAILED.getValue(), movieId);
+            Movie.update("status = ?1 where code = ?2", MovieStatus.FAILED.getValue(), code);
+            logger.infof("Updated movie with code %s status to FAILED", code);
         } catch (Exception ex) {
-            logger.errorf("Failed to update movie status: %s", ex.getMessage());
+            logger.errorf("Failed to update movie status to FAILED: %s", ex.getMessage());
         }
     }
 }

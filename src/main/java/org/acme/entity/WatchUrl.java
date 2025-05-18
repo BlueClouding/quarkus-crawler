@@ -1,6 +1,7 @@
 package org.acme.entity;
 
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
+import org.acme.entity.VideoSource;
 import jakarta.persistence.*;
 import java.time.ZonedDateTime;
 
@@ -9,9 +10,18 @@ import java.time.ZonedDateTime;
         @UniqueConstraint(columnNames = {"movie_id", "url"})
 })
 public class WatchUrl extends PanacheEntity {
+    
+    // Default source for this entity
+    public static final VideoSource DEFAULT_SOURCE = VideoSource.MISSAV;
 
-    @Column(name = "movie_id", nullable = false)
+    @Column(name = "movie_id")
     public Integer movieId;
+    
+    @Column(name = "code")
+    public String code;
+
+    @Column(name = "source")
+    public String source;
 
     public String url;
 
@@ -35,6 +45,14 @@ public class WatchUrl extends PanacheEntity {
 
     public void setMovieId(Integer movieId) {
         this.movieId = movieId;
+    }
+    
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 
     public String getUrl() {
@@ -83,5 +101,20 @@ public class WatchUrl extends PanacheEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
+    
+    /**
+     * Check if this WatchUrl has a specific source
+     */
+    public boolean hasSource(VideoSource videoSource) {
+        return videoSource.getValue().equals(this.source);
     }
 }

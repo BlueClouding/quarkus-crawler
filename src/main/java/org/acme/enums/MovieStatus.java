@@ -5,6 +5,7 @@ public enum MovieStatus {
     PROCESSING("processing"),
     NO_RESULT("noResult"),
     FAILED("failed"),
+    SUCCEED("succeed"),
     ONLINE("online"),
     OFFLINE("offline");
 

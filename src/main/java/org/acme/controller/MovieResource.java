@@ -87,12 +87,12 @@ public class MovieResource {
      * 调试用：手动触发处理单个电影
      */
     @GET
-    @Path("/debug/process/{id}")
+    @Path("/debug/process/{code}")
     @Transactional
-    public Response debugProcessOneMovie(@PathParam("id") Long movieId) {
+    public Response debugProcessOneMovie(@PathParam("code") String code) {
         try {
-            movieDetailCrawlerWorker.processOneMovieById(movieId);
-            return Response.ok().entity("Movie processed: " + movieId).build();
+            movieDetailCrawlerWorker.processOneMovieByCode(code);
+            return Response.ok().entity("Movie processed: " + code).build();
         } catch (Exception e) {
             return Response.serverError().entity("Error: " + e.getMessage()).build();
         }

@@ -6,6 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,6 +21,9 @@ import java.util.UUID;
                 query = "SELECT m FROM MovieInfo m WHERE m.movieUuid = :movieUuid AND m.language = :language")
 })
 public class MovieInfo extends PanacheEntity {
+
+    @Column(length = 55, nullable = false)
+    public String code;
 
     @Column(name = "movie_uuid", nullable = false)
     public UUID movieUuid;
@@ -47,9 +51,27 @@ public class MovieInfo extends PanacheEntity {
 
     @Column(columnDefinition = "varchar(255)[]")
     public List<String> actresses;
-
+    
+    @Column(name = "release_date")
+    public LocalDate releaseDate;
+    
+    @Column(name = "website_date")
+    public LocalDate websiteDate;
+    
+    @Column
+    public Integer duration;
+    
+    @Column(name = "cover_url", length = 512)
+    public String coverUrl;
+    
     @Column(name = "series", columnDefinition = "text")
     public String series;
+    
+    @Column(name = "label", length = 255)
+    public String label;
+    
+    @Column(name = "m3u8_info", columnDefinition = "text[]")
+    public List<String> m3u8Info;
 
     @CreationTimestamp
     @Column(name = "created_at")
@@ -79,6 +101,7 @@ public class MovieInfo extends PanacheEntity {
         info.maker = movie.maker;
         info.actresses = movie.actresses;
         info.series = movie.series;
+        // m3u8Info is not copied from Movie as it's specific to MovieInfo
         return info;
     }
 
@@ -177,5 +200,13 @@ public class MovieInfo extends PanacheEntity {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+    
+    public List<String> getM3u8Info() {
+        return m3u8Info;
+    }
+    
+    public void setM3u8Info(List<String> m3u8Info) {
+        this.m3u8Info = m3u8Info;
     }
 }
