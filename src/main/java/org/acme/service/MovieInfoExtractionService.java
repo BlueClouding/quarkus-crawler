@@ -5,11 +5,13 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import org.acme.entity.MovieInfo;
 import org.acme.extractor.MovieInfoExtractor;
+import org.acme.util.FailedUrlLogger;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class MovieInfoExtractionService {
@@ -31,6 +33,23 @@ public class MovieInfoExtractionService {
             Map.entry("pt", "pt") // Portuguese
     );
 
+    // Base URL
+    private static final String BASE_URL = "https://missav.ai/";
+    /**
+     * Gets the URL for a specific DVD code and language
+     * 
+     * @param dvdCode The DVD code
+     * @param languageCode The language code (empty for default)
+     * @return The full URL
+     */
+    private static String getLanguageUrl(String dvdCode, String languageCode) {
+        if (languageCode.isEmpty()) {
+            return BASE_URL + dvdCode;
+        } else {
+            return BASE_URL + languageCode + "/" + dvdCode;
+        }
+    }
+
     /**
      * Extracts movie information for all 13 supported languages and saves it to the database.
      * 
@@ -42,31 +61,41 @@ public class MovieInfoExtractionService {
         movieCode = movieCode.toLowerCase();
         List<MovieInfo> savedEntities = new ArrayList<>();
         UUID movieUuid = UUID.randomUUID(); // Generate a common UUID for all language versions
-        
+
         for (Map.Entry<String, String> languageEntry : LANGUAGE_CODES.entrySet()) {
+            // 添加延迟以避免请求过于频繁
             try {
-                String languagePathCode = languageEntry.getKey();
-                String languageDbCode = languageEntry.getValue();
-                
-                // Extract movie information for this language
-                Map<String, Object> extractedInfo;
-                try {
-                    extractedInfo = MovieInfoExtractor.extractMovieInfoForLanguage(movieCode, languagePathCode);
-                } catch (NoClassDefFoundError e) {
-                    Log.error("MovieInfoExtractor class not found. Make sure it's accessible from the main code.", e);
-                    throw new RuntimeException("Cannot access MovieInfoExtractor", e);
-                }
-                
-                // Create and save MovieInfo entity
-                MovieInfo movieInfo = createMovieInfoFromExtracted(extractedInfo, movieCode, movieUuid, languageDbCode);
-                movieInfo.persist();
-                savedEntities.add(movieInfo);
-                
-                Log.info("Saved movie info for " + movieCode + " in language: " + languageDbCode);
-            } catch (Exception e) {
-                Log.error("Failed to extract movie info for " + movieCode + " in language: " + 
-                         languageEntry.getValue(), e);
+                // 在请求之间添加500毫秒的延迟
+                TimeUnit.MILLISECONDS.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Log.warn("Sleep interrupted between language requests");
             }
+           
+            String languagePathCode = languageEntry.getKey();
+            String languageDbCode = languageEntry.getValue();
+            
+            // Extract movie information for this language
+            Map<String, Object> extractedInfo;
+            String url = getLanguageUrl(movieCode, languagePathCode);
+            try {
+                extractedInfo = MovieInfoExtractor.extractMovieInfoForLanguage(url);
+            } catch (Exception e) {
+                // 记录错误日志
+                Log.error("Failed to extract movie info for " + url, e);
+                // 记录失败的URL到文件
+                FailedUrlLogger.logFailedUrl(url, e.getMessage());
+                // 继续处理其他语言版本，不中断整个流程
+                continue;
+            }
+            
+            // Create and save MovieInfo entity
+            MovieInfo movieInfo = createMovieInfoFromExtracted(extractedInfo, movieCode, movieUuid, languageDbCode);
+            movieInfo.persist();
+            savedEntities.add(movieInfo);
+            
+            Log.info("Saved movie info for " + movieCode + " in language: " + languageDbCode);
+            
         }
         
         return savedEntities;

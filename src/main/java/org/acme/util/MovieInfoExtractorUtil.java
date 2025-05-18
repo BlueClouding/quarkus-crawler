@@ -12,6 +12,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import org.acme.entity.VideoSource;
+import org.jboss.logging.Logger;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -27,6 +28,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MovieInfoExtractorUtil {
+    
+    private static final Logger logger = Logger.getLogger(MovieInfoExtractorUtil.class);
     // Create an instance of OkHttpClient with redirect handling
     private static final OkHttpClient client = new OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -37,10 +40,10 @@ public class MovieInfoExtractorUtil {
         .followSslRedirects(true)     // 确保HTTPS重定向被处理
         .addInterceptor(chain -> {    // 添加拦截器记录请求和响应
             Request request = chain.request();
-            System.out.println("发送请求: " + request.url());
+            logger.info("发送请求: " + request.url());
             Response response = chain.proceed(request);
-            System.out.println("收到响应: " + response.code() + " " + response.message());
-            System.out.println("最终URL: " + response.request().url());
+            logger.info("收到响应: " + response.code() + " " + response.message());
+            logger.info("最终URL: " + response.request().url());
             return response;
         })
         .build();
@@ -134,16 +137,16 @@ public class MovieInfoExtractorUtil {
             try (Response response = client.newCall(request).execute()) {
                 // Check if we got a successful response
                 if (!response.isSuccessful()) {
-                    System.err.println("请求失败: " + response.code() + " " + response.message());
-                    System.err.println("原始URL: " + url);
-                    System.err.println("最终URL: " + response.request().url());
+                    logger.error("请求失败: " + response.code() + " " + response.message());
+                    logger.error("原始URL: " + url);
+                    logger.error("最终URL: " + response.request().url());
                     throw new IOException("Unexpected HTTP response: " + response.code());
                 }
                 
                 // 打印URL重定向信息
                 String finalUrl = response.request().url().toString();
                 if (!url.equals(finalUrl)) {
-                    System.out.println("URL重定向: " + url + " -> " + finalUrl);
+                    logger.info("URL重定向: " + url + " -> " + finalUrl);
                 }
                 
                 // Get response body and parse with JSoup
@@ -184,10 +187,10 @@ public class MovieInfoExtractorUtil {
                             List<String> storedM3u8Info = JacksonUtils.parseList(existingWatchUrl.url, String.class);
                             if (storedM3u8Info != null && !storedM3u8Info.isEmpty()) {
                                 m3u8Info = storedM3u8Info;
-                                System.out.println("Found existing m3u8 info for code: " + dvdId);
+                                logger.info("Found existing m3u8 info for code: " + dvdId);
                             }
                         } catch (Exception e) {
-                            System.err.println("Error parsing stored m3u8 info for code: " + dvdId);
+                            logger.error("Error parsing stored m3u8 info for code: " + dvdId);
                         }
                     } else {
                         Map<String, Object> m3u8Result = extractM3u8Info(doc);

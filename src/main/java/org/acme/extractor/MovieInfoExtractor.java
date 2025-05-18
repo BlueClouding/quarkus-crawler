@@ -34,22 +34,7 @@ public class MovieInfoExtractor {
     
     // 使用静态OkHttpClient实例提高性能
     
-    // Base URL
-    private static final String BASE_URL = "https://missav.ai/";
-    /**
-     * Gets the URL for a specific DVD code and language
-     * 
-     * @param dvdCode The DVD code
-     * @param languageCode The language code (empty for default)
-     * @return The full URL
-     */
-    private static String getLanguageUrl(String dvdCode, String languageCode) {
-        if (languageCode.isEmpty()) {
-            return BASE_URL + dvdCode;
-        } else {
-            return BASE_URL + languageCode + "/" + dvdCode;
-        }
-    }
+
 
     /**
      * Extracts movie information for a specific language.
@@ -59,21 +44,10 @@ public class MovieInfoExtractor {
      * @return A map containing the extracted movie information
      * @throws IOException If an error occurs during extraction
      */
-    public static Map<String, Object> extractMovieInfoForLanguage(String dvdCode, String languageCode) throws IOException {
-        String url = getLanguageUrl(dvdCode, languageCode);
+    public static Map<String, Object> extractMovieInfoForLanguage(String url) throws IOException {
+       
         // Pass null for movieId since we don't know it at this point
         return MovieInfoExtractorUtil.extractMovieInfoFromUrl(url, null);
-    }
-    
-    /**
-     * Extracts movie information for the default language (English).
-     * 
-     * @param dvdCode The DVD code of the movie
-     * @return A map containing the extracted movie information
-     * @throws IOException If an error occurs during extraction
-     */
-    public static Map<String, Object> extractMovieInfo(String dvdCode) throws IOException {
-        return extractMovieInfoForLanguage(dvdCode, "en");
     }
     
     /**
