@@ -35,14 +35,12 @@ public class CollectionProcessController {
     /**
      * Process a single batch of movies
      *
-     * @param startId The ID to start processing from
      * @param batchSize The number of movies to process in this batch
      * @return Response with the results of the batch processing
      */
     @POST
     @Path("/batch")
     public Response processBatch(
-            @QueryParam("startId") @DefaultValue("1") Long startId,
             @QueryParam("batchSize") @DefaultValue("120") int batchSize) {
 
         if (isRunning) {
@@ -59,11 +57,11 @@ public class CollectionProcessController {
         // Set running flag
         isRunning = true;
 
-        logger.infof("Processing batch: startId=%d, batchSize=%d", startId, batchSize);
+        logger.infof("Processing batch: batchSize=%d", batchSize);
 
         try {
             CompletableFuture.runAsync(() -> {
-                collectionProcessService.processBatch(startId, batchSize);
+                collectionProcessService.processMovieBatch(batchSize);
             });
             return Response.ok(new ProcessResponse("Collection processing started with batch size " + batchSize)).build();
         } catch (Exception e) {

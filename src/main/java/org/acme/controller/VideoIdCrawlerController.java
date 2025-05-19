@@ -249,11 +249,10 @@ public class VideoIdCrawlerController {
         return Response.ok(new CrawlerResponse("Video ID crawler stopped"))
                 .build();
     }
-    
+
     /**
      * Updates the original URL prefix in all WatchUrl records asynchronously with batch processing
-     * 
-     * @param oldPrefix The current URL prefix to be replaced
+     *
      * @param newPrefix The new URL prefix to use
      * @param batchSize The number of records to process in each batch (default: 10)
      * @return Response with information about the operation
@@ -261,138 +260,140 @@ public class VideoIdCrawlerController {
     @POST
     @Path("/update-url-prefix")
     public Response updateUrlPrefix(
-            @QueryParam("oldPrefix") String oldPrefix,
             @QueryParam("newPrefix") String newPrefix,
             @QueryParam("batchSize") @DefaultValue("10") int batchSize) {
-        
-        if (oldPrefix == null || oldPrefix.isEmpty() || newPrefix == null || newPrefix.isEmpty()) {
+
+        if (newPrefix == null || newPrefix.isEmpty()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(new CrawlerResponse("Both oldPrefix and newPrefix parameters are required"))
                     .build();
         }
-        
+
         if (isRunning) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(new CrawlerResponse("Another task is already running. Please wait or stop it first."))
                     .build();
         }
-        
+
         // Initialize the executor if needed
         if (executor == null || executor.isShutdown()) {
             executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         }
-        
+
         // Get the total count of URLs to update
         long totalCount;
         try {
-            totalCount = videoIdCrawlerService.countUrlsWithPrefix(oldPrefix);
+            // Using countUrlsWithoutPrefix with inverted logic (NOT LIKE for old prefix is equivalent to LIKE for non-matching URLs)
+            totalCount = videoIdCrawlerService.countUrlsWithoutPrefix(newPrefix);
             if (totalCount == 0) {
-                return Response.ok(new CrawlerResponse("No URLs found with prefix '" + oldPrefix + "'"))
+                return Response.ok(new CrawlerResponse("No URLs found with prefix '" + newPrefix + "'"))
                        .build();
             }
         } catch (Exception e) {
-            logger.errorf("Error counting URLs with prefix '%s': %s", oldPrefix, e.getMessage());
+            logger.errorf("Error counting URLs: %s", e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                    .entity(new CrawlerResponse("Error counting URLs: " + e.getMessage()))
                    .build();
         }
-        
+
         // Set running flag
         isRunning = true;
-        
+
         // Get the Arc container and request context for proper CDI in background threads
         final ArcContainer container = Arc.container();
         final ManagedContext requestContext = container.requestContext();
-        
+
         // Start the URL update process in a separate thread with proper request context
         CompletableFuture.runAsync(() -> {
-            // Activate request context for this thread
-            requestContext.activate();
+            requestContext.activate(); // Activate CDI request context for the new thread
             try {
-                logger.infof("Starting URL prefix update from '%s' to '%s' for %d records", 
-                             oldPrefix, newPrefix, totalCount);
-                
-                int totalPages = (int) Math.ceil(totalCount / (double) batchSize);
-                int updatedCount = 0;
-                int failedCount = 0;
-                
-                // Process all batches
-                for (int page = 0; page < totalPages; page++) {
-                    if (executor.isShutdown()) {
-                        logger.info("URL update process was stopped");
+                logger.infof("Starting URL prefix update to '%s'", newPrefix);
+
+                int currentPage = 0;
+                int totalUpdatedCount = 0;
+                int totalFailedCount = 0;
+
+                while (currentPage <= totalCount && !executor.isShutdown() && !Thread.currentThread().isInterrupted()) {
+                    List<WatchUrl> batch;
+                    try {
+                        // 每次获取指定 batchSize (例如10) 的数据
+                        batch = videoIdCrawlerService.getUrlBatch(newPrefix, batchSize);
+                    } catch (Exception e) {
+                        logger.errorf("Error fetching batch for page %d: %s. Stopping task.", currentPage, e.getMessage(), e);
+                        break; // 获取批次失败，终止任务
+                    }
+
+                    if (batch == null || batch.isEmpty()) {
+                        if (currentPage == 0) {
+                            logger.infof("No URLs found to update with prefix '{}' on the first batch attempt.", newPrefix);
+                        } else {
+                            logger.infof("No more URLs to process. Last attempted page was %d.", currentPage);
+                        }
                         break;
                     }
-                    
-                    // Get a batch of records
-                    List<WatchUrl> batch = videoIdCrawlerService.getUrlBatch(oldPrefix, batchSize, page);
-                    if (batch.isEmpty()) {
-                        break; // No more records to process
-                    }
-                    
-                    logger.infof("Processing batch %d/%d with %d records", page + 1, totalPages, batch.size());
-                    
-                    // Process each record in the batch with CompletableFuture
+
+                    logger.infof("Processing page %d with %d records (batchSize: %d)", currentPage, batch.size(), batchSize);
+
                     List<CompletableFuture<Boolean>> futures = new ArrayList<>();
-                    
                     for (WatchUrl watchUrl : batch) {
                         CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> {
                             try {
-                                return videoIdCrawlerService.updateSingleUrl(watchUrl, oldPrefix, newPrefix);
+                                return videoIdCrawlerService.updateSingleUrl(watchUrl, newPrefix);
                             } catch (Exception e) {
-                                logger.errorf("Error updating URL for movie ID %d: %s", 
-                                             watchUrl.getMovieId(), e.getMessage());
-                                return false;
+                                logger.errorf("Error updating URL for movie ID %d: %s",
+                                        watchUrl.getMovieId(), e.getMessage());
+                                return false; // 更新失败
                             }
                         }, executor);
-                        
                         futures.add(future);
                     }
-                    
-                    // Wait for all updates in this batch to complete
+
                     CompletableFuture<Void> allFutures = CompletableFuture.allOf(
                             futures.toArray(new CompletableFuture[0]));
-                    
+
                     try {
-                        allFutures.join(); // Wait for all to complete
-                        
-                        // Count successful updates
+                        allFutures.join(); // 等待当前批次所有更新完成
+
+                        int batchUpdated = 0;
+                        int batchFailed = 0;
                         for (CompletableFuture<Boolean> future : futures) {
                             try {
-                                if (future.get()) {
-                                    updatedCount++;
+                                if (future.isDone() && !future.isCancelled() && !future.isCompletedExceptionally() && future.get()) {
+                                    batchUpdated++;
                                 } else {
-                                    failedCount++;
+                                    batchFailed++;
                                 }
-                            } catch (Exception e) {
-                                failedCount++;
-                                logger.error("Error getting future result", e);
+                            } catch (Exception e) { // InterruptedException, ExecutionException
+                                batchFailed++;
+                                logger.error("Error processing future result for an update in page " + currentPage, e);
                             }
                         }
-                        
-                        logger.infof("Completed batch %d/%d. Progress: %d/%d records updated", 
-                                     page + 1, totalPages, updatedCount, totalCount);
-                        
-                    } catch (Exception e) {
-                        logger.errorf("Error waiting for batch %d completion: %s", page + 1, e.getMessage());
+                        totalUpdatedCount += batchUpdated;
+                        totalFailedCount += batchFailed;
+
+                        logger.infof("Completed page %d. Batch: %d updated, %d failed. Cumulative: %d updated, %d failed.",
+                                currentPage, batchUpdated, batchFailed, totalUpdatedCount, totalFailedCount);
+
+                    } catch (Exception e) { // CancellationException, CompletionException from join
+                        logger.errorf("Error waiting for batch (page %d) completion: %s", currentPage, e.getMessage());
+                        // 根据情况决定是否中断整个流程
                     }
+                    currentPage++; // 移动到下一页
                 }
-                
-                logger.infof("URL prefix update completed. Updated %d records, failed %d records", 
-                             updatedCount, failedCount);
-                
+
+                logger.infof("URL prefix update process finished. Total records updated: %d, Total records failed: %d. Total pages processed: %d.",
+                        totalUpdatedCount, totalFailedCount, currentPage);
+
             } catch (Exception e) {
-                logger.errorf("Error during URL prefix update: %s", e.getMessage());
-                logger.error("Stack trace:", e);
+                logger.error("Unhandled error during URL prefix update background task:", e);
             } finally {
                 isRunning = false;
-                // Clean up the request context when done
-                requestContext.terminate();
+                requestContext.terminate(); // Terminate CDI request context
             }
-        });
-        
+        }, executor);
+
         return Response.ok(new CrawlerResponse(String.format(
-                "Started updating URLs with prefix '%s' to '%s'. Found %d URLs to process. Check logs for progress.", 
-                oldPrefix, newPrefix, totalCount)))
+                "Started updating URLs to '%s'. Found %d URLs to process. Check logs for progress.", newPrefix, totalCount)))
                 .build();
     }
 

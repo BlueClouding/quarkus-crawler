@@ -1,7 +1,6 @@
 package org.acme.entity;
 
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
-import org.acme.entity.VideoSource;
 import jakarta.persistence.*;
 import java.time.ZonedDateTime;
 

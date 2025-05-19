@@ -66,7 +66,7 @@ public class MovieInfoExtractionService {
             // 添加延迟以避免请求过于频繁
             try {
                 // 在请求之间添加500毫秒的延迟
-                TimeUnit.MILLISECONDS.sleep(500);
+                TimeUnit.MILLISECONDS.sleep(1000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 Log.warn("Sleep interrupted between language requests");

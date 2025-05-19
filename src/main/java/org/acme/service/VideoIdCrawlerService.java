@@ -7,6 +7,7 @@ import jakarta.transaction.Transactional;
 import org.acme.entity.WatchUrl;
 import org.acme.enums.MovieStatus;
 import org.acme.model.VScopeParseResult;
+import org.acme.util.UrlPrefixReplacer;
 import org.jboss.logging.Logger;
 
 import java.util.List;
@@ -126,61 +127,59 @@ public class VideoIdCrawlerService {
             }
         }
     }
-    
+
     /**
      * Count how many records have the specified URL prefix
-     * 
-     * @param oldPrefix the prefix to search for
+     *
+     * @param newPrefix the prefix to search for
      * @return the number of records with the specified prefix
      */
     @Transactional
-    public long countUrlsWithPrefix(String oldPrefix) {
-        if (oldPrefix == null || oldPrefix.isEmpty()) {
+    public long countUrlsWithoutPrefix(String newPrefix) {
+        if (newPrefix == null || newPrefix.isEmpty()) {
             return 0;
         }
-        return WatchUrl.count("originalUrl LIKE ?1", oldPrefix + "%");
+        return WatchUrl.count("originalUrl not LIKE ?1", newPrefix + "%");
     }
-    
+
     /**
      * Get a batch of WatchUrl records with the specified URL prefix
-     * 
-     * @param oldPrefix the prefix to search for
+     *
+     * @param newPrefix the prefix to search for
      * @param batchSize the number of records to retrieve
-     * @param page the page number (0-based) for pagination
      * @return a list of WatchUrl records
      */
     @Transactional
-    public List<WatchUrl> getUrlBatch(String oldPrefix, int batchSize, int page) {
-        if (oldPrefix == null || oldPrefix.isEmpty()) {
+    public List<WatchUrl> getUrlBatch(String newPrefix, int batchSize) {
+        if (newPrefix == null || newPrefix.isEmpty()) {
             return List.of();
         }
-        return WatchUrl.find("originalUrl LIKE ?1", oldPrefix + "%")
-                .page(page, batchSize)
+        return WatchUrl.find("originalUrl not LIKE ?1", newPrefix + "%")
+                .page(0, batchSize)
                 .list();
     }
-    
+
     /**
      * Update a single WatchUrl record with a new prefix
-     * 
+     *
      * @param watchUrl the WatchUrl record which might be detached
-     * @param oldPrefix the current prefix to replace
      * @param newPrefix the new prefix to use
      * @return true if the update was successful, false otherwise
      */
     @Transactional
-    public boolean updateSingleUrl(WatchUrl watchUrl, String oldPrefix, String newPrefix) {
-        if (watchUrl == null || oldPrefix == null || oldPrefix.isEmpty() || newPrefix == null) {
+    public boolean updateSingleUrl(WatchUrl watchUrl, String newPrefix) {
+        if (watchUrl == null || newPrefix == null) {
             return false;
         }
-        
+
         Long id = watchUrl.id;
         int movieId = watchUrl.getMovieId();
         String originalUrl = watchUrl.getOriginalUrl();
-        
-        if (originalUrl == null || !originalUrl.startsWith(oldPrefix)) {
+
+        if (originalUrl == null) {
             return false;
         }
-        
+
         try {
             // Get a fresh attached entity instead of using the potentially detached one
             WatchUrl freshWatchUrl;
@@ -191,16 +190,16 @@ public class VideoIdCrawlerService {
                 // Otherwise find by movieId (unique constraint)
                 freshWatchUrl = WatchUrl.find("movieId = ?1", movieId).firstResult();
             }
-            
+
             if (freshWatchUrl == null) {
                 logger.warnf("Could not find WatchUrl with ID %d or movieId %d", id, movieId);
                 return false;
             }
-            
+
             // Replace the prefix
-            String newUrl = newPrefix + originalUrl.substring(oldPrefix.length());
+            String newUrl = UrlPrefixReplacer.replaceUrlPrefix(originalUrl, newPrefix);
             freshWatchUrl.setOriginalUrl(newUrl);
-            
+
             // Update m3u8 URL if needed by re-processing
             try {
                 VScopeParseResult m3u8Result = movieParser.extractM3U8FromPlayer(newUrl);
@@ -208,24 +207,24 @@ public class VideoIdCrawlerService {
                     freshWatchUrl.setUrl(m3u8Result.getStream());
                 }
             } catch (Exception e) {
-                logger.warnf("Failed to update m3u8 URL for movie ID %d: %s", 
+                logger.warnf("Failed to update m3u8 URL for movie ID %d: %s",
                             movieId, e.getMessage());
             }
-            
+
             // Persist changes - now with a managed entity
             freshWatchUrl.persist();
             logger.infof("Successfully updated URL for movie ID %d", movieId);
             return true;
         } catch (Exception e) {
-            logger.errorf("Error updating URL for movie ID %d: %s", 
+            logger.errorf("Error updating URL for movie ID %d: %s",
                         movieId, e.getMessage());
             return false;
         }
     }
-    
+
     /**
      * Legacy method for updating all URL prefixes at once (not recommended for large datasets)
-     * 
+     *
      * @param oldPrefix the current prefix to replace
      * @param newPrefix the new prefix to use
      * @return the number of records updated
@@ -239,26 +238,26 @@ public class VideoIdCrawlerService {
         }
 
         logger.infof("Updating original URLs from prefix '%s' to '%s'", oldPrefix, newPrefix);
-        
+
         // Find all WatchUrl records that have originalUrl starting with oldPrefix
         List<WatchUrl> watchUrls = WatchUrl.find("originalUrl LIKE ?1", oldPrefix + "%").list();
-        
+
         // If no matching records, return 0
         if (watchUrls.isEmpty()) {
             logger.info("No watch URLs found with the specified prefix");
             return 0;
         }
-        
+
         // Count of successfully updated records
         int updatedCount = 0;
-        
+
         // Process each record
         for (WatchUrl watchUrl : watchUrls) {
-            if (updateSingleUrl(watchUrl, oldPrefix, newPrefix)) {
+            if (updateSingleUrl(watchUrl, newPrefix)) {
                 updatedCount++;
             }
         }
-        
+
         logger.infof("Successfully updated %d/%d watch URLs", updatedCount, watchUrls.size());
         return updatedCount;
     }

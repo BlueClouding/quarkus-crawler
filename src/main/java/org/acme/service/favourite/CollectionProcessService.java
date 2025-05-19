@@ -1,10 +1,13 @@
 package org.acme.service.favourite;
 
+import dev.langchain4j.internal.Json;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import org.acme.entity.Movie;
+import org.acme.entity.WatchUrl;
+import org.acme.enums.CrawlerStatus;
 import org.acme.enums.MovieStatus;
 import org.acme.model.FavouriteRequest;
 import org.acme.model.FavouriteResponse;
@@ -34,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * Service for processing user collections
@@ -61,8 +65,6 @@ public class CollectionProcessService {
     @Inject
     FavouriteService favouriteService;
 
-    @Inject
-    MovieParser movieParser;
 
     public CollectionProcessService() {
         this.httpClient = HttpClientUtils.createHttpClient();
@@ -72,6 +74,75 @@ public class CollectionProcessService {
         // Initialize data directory
         FileUtils.initDataDirectory();
     }
+
+    public Map<String, Object> processMovieBatch(int batchSize) {
+        Map<String, Object> result = new HashMap<>();
+        AtomicInteger addedCount = new AtomicInteger(0);
+        AtomicInteger fetchedCount = new AtomicInteger(0);
+        AtomicInteger savedCount = new AtomicInteger(0);
+        AtomicInteger removedCount = new AtomicInteger(0);
+        AtomicInteger errorCount = new AtomicInteger(0);
+
+        try {
+            // Calculate endId based on startId and batchSize
+
+            logger.infof("Starting batch processing ids");
+            List<WatchUrl> watchUrls = WatchUrl.find("status = ?1 order by id desc", MovieStatus.ONLINE.getValue())
+                    .page(0, batchSize)
+                    .list();
+            Set<Integer> ids = watchUrls.stream().map(WatchUrl::getMovieId).collect(Collectors.toSet());
+
+            // Step 1: Add movies to favourites
+            Map<Long, FavouriteResponse> addResults = addIdsToFavourites(ids);
+
+            // Count successful additions
+            addResults.forEach((id, response) -> {
+                if (response.isSuccess()) {
+                    addedCount.incrementAndGet();
+                } else {
+                    logger.warnf("Failed to add movie ID %d to favourites: %s", id, response.getMessage());
+                    errorCount.incrementAndGet();
+                }
+            });
+
+            // Step 2 & 3: Process collection pages and save movies
+            Map<String, Integer> processResult = processCollectionAndSave();
+            fetchedCount.set(processResult.get("fetchedCount"));
+            savedCount.set(processResult.get("savedCount"));
+            errorCount.addAndGet(processResult.get("errorCount"));
+
+            // Step 4: Remove movies from favourites
+            Map<Long, FavouriteResponse> removeResults = removeIdsFromFavourites(ids);
+
+            // Count successful removals
+            removeResults.forEach((id, response) -> {
+                if (response.isSuccess()) {
+                    removedCount.incrementAndGet();
+                } else {
+                    removedCount.incrementAndGet();
+                    logger.warnf("Failed to remove movie ID %d from favourites: %s", id, response.getMessage());
+                }
+            });
+
+            // Prepare result summary
+            result.put("success", true);
+            result.put("ids", Json.toJson(ids));
+            result.put("batchSize", batchSize);
+            result.put("addedCount", addedCount.get());
+            result.put("fetchedCount", fetchedCount.get());
+            result.put("savedCount", savedCount.get());
+            result.put("removedCount", removedCount.get());
+            result.put("errorCount", errorCount.get());
+
+        } catch (Exception e) {
+            logger.errorf("Error processing batch: %s", e.getMessage());
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
 
     /**
      * Process a batch of movies by:
@@ -150,6 +221,14 @@ public class CollectionProcessService {
         return result;
     }
 
+    public Map<Long, FavouriteResponse> addIdsToFavourites(Set<Integer> ids) {
+        logger.info("Step 1: Adding movies to favourites");
+        Map<Long, FavouriteResponse> addResults = favouriteService.processFavouritesForList(ids, "add");
+        int successCount = (int) addResults.values().stream().filter(FavouriteResponse::isSuccess).count();
+        logger.infof("Added %d movies to favourites", successCount);
+        return addResults;
+    }
+
     /**
      * Add a range of movie IDs to favourites
      *
@@ -204,7 +283,7 @@ public class CollectionProcessService {
             for (List<Integer> batch : pageBatches) {
                 CompletableFuture<List<Movie>> future = CompletableFuture.supplyAsync(() -> {
                     List<Movie> batchMovies = new ArrayList<>();
-                    
+
                     logger.infof("Processing page batch: %d to %d", batch.get(0), batch.get(batch.size() - 1));
 
                     for (Integer page : batch) {
@@ -374,6 +453,20 @@ public class CollectionProcessService {
             logger.errorf("Error determining total collection pages: %s", e.getMessage());
             return 0;
         }
+    }
+
+    public Map<Long, FavouriteResponse> removeIdsFromFavourites(Set<Integer> ids) {
+        logger.info("Step 4: Removing movies from favourites");
+        Map<Long, FavouriteResponse> removeResults = favouriteService.processFavouritesForList(ids, "remove");
+
+        // Track failed removals
+        List<Long> failedIds = new ArrayList<>();
+        removeResults.forEach((id, response) -> {
+            if (!response.isSuccess()) {
+                failedIds.add(id);
+            }
+        });
+        return removeResults;
     }
 
     /**
@@ -606,7 +699,7 @@ public class CollectionProcessService {
                     String htmlContent = response.body().string();
 
                     // Extract movies from the collection page
-                    List<Movie> pageMovies = extractMovieFromElement(htmlContent, "https://123av.com/zh");
+                    List<Movie> pageMovies = extractMovieFromElement(htmlContent, "https://123av.com/ja");
                     if (pageMovies != null && !pageMovies.isEmpty()) {
                         movies.addAll(pageMovies);
                     }
@@ -729,35 +822,5 @@ public class CollectionProcessService {
             logger.errorf("Error parsing collection page: %s", e.getMessage());
             return movies;
         }
-    }
-
-    /**
-     * Process multiple batches sequentially
-     *
-     * @param startId The starting movie ID for the first batch
-     * @param batchSize The size of each batch
-     * @param batchCount The number of batches to process
-     * @return List of batch processing results
-     */
-    public List<Map<String, Object>> processMultipleBatches(Long startId, int batchSize, int batchCount) {
-        List<Map<String, Object>> results = new ArrayList<>();
-
-        for (int i = 0; i < batchCount; i++) {
-            Long currentStartId = startId + (i * batchSize);
-            logger.infof("Processing batch %d/%d starting from ID %d", i + 1, batchCount, currentStartId);
-
-            Map<String, Object> batchResult = processBatch(currentStartId, batchSize);
-            results.add(batchResult);
-
-            // Add delay between batches
-            try {
-                Thread.sleep(2000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                logger.warn("Thread interrupted during delay between batches");
-            }
-        }
-
-        return results;
     }
 }
