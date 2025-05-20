@@ -48,13 +48,14 @@ import java.util.stream.Stream;
  * 4. Removing movies from favourites
  */
 @ApplicationScoped
+@Transactional
 public class CollectionProcessService {
 
     private static final Logger logger = Logger.getLogger(CollectionProcessService.class);
     private static final String COLLECTION_BASE_URL = "https://123av.com/zh/user/collection";
     private static final int MAX_RETRIES = 3;
     private static final int COLLECTION_THREAD_POOL_SIZE = 5; // Number of threads for processing collection pages
-    private static final int PAGES_PER_THREAD = 20; // Number of pages each thread should process
+    private static final int PAGES_PER_THREAD = 1; // Number of pages each thread should process
 
     // Cookie string for authentication - in a real application, this would be managed properly
     private static final String COOKIE_STRING = "_ga=GA1.1.102313145.1744379567; dom3ic8zudi28v8lr6fgphwffqoz0j6c=074613d3-a62f-4b54-9e34-57d7d7215ec0%3A1%3A1; remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d=336255%7CuICKPKngTFAtH1xtQ8sAUD5vcWj1DfyXvIqd58W0kWmsQjPudM4ZOTkVK0Th%7C%242y%2412%24MrWKIiD0dnB.ALudK1g7Se.CGkahhbqcVmnhLAib6x8eu8mvsPWsu; locale=zh; session=q2cQvi0CshyKvHkZTVQYToCwpHahZ2mMpVZAhTvX; x-token=366cdf8a7bb8bbb1b3befa65853a06cf; _ga_VZGC2QQBZ8=GS1.1.1744454119.4.1.1744454697.0.0.0";
@@ -75,6 +76,7 @@ public class CollectionProcessService {
         FileUtils.initDataDirectory();
     }
 
+    @Transactional
     public Map<String, Object> processMovieBatch(int batchSize) {
         Map<String, Object> result = new HashMap<>();
         AtomicInteger addedCount = new AtomicInteger(0);
@@ -250,6 +252,7 @@ public class CollectionProcessService {
      *
      * @return Map containing counts of fetched and saved movies
      */
+    @Transactional
     public Map<String, Integer> processCollectionAndSave() {
         Map<String, Integer> result = new HashMap<>();
         AtomicInteger fetchedCount = new AtomicInteger(0);
@@ -408,7 +411,7 @@ public class CollectionProcessService {
             String url = COLLECTION_BASE_URL;
             logger.infof("Fetching first collection page to determine total pages: %s", url);
 
-            Request request = HttpClientUtils.createRequestBuilderWithReferer(url, COOKIE_STRING, "https://123av.com/zh/user/feed", false)
+            Request request = HttpClientUtils.createRequestBuilderWithReferer(url, COOKIE_STRING, "https://123av.com/en/user/feed", false)
                     .build();
 
             try (Response response = httpClient.newCall(request).execute()) {
@@ -649,10 +652,18 @@ public class CollectionProcessService {
 
             if (existingMovie != null) {
                 // Update existing movie
-                if (movie.getTitle() != null) existingMovie.setTitle(movie.getTitle());
-                if (movie.getThumbnail() != null) existingMovie.setThumbnail(movie.getThumbnail());
-                if (movie.getLink() != null) existingMovie.setLink(movie.getLink());
-                if (movie.getOriginalId() != null) existingMovie.setOriginalId(movie.getOriginalId());
+                if (movie.getTitle() != null) {
+                    existingMovie.setTitle(movie.getTitle());
+                }
+                if (movie.getThumbnail() != null) {
+                    existingMovie.setThumbnail(movie.getThumbnail());
+                }
+                if (movie.getLink() != null) {
+                    existingMovie.setLink(movie.getLink());
+                }
+                if (movie.getOriginalId() != null) {
+                    existingMovie.setOriginalId(movie.getOriginalId());
+                }
 
                 existingMovie.persist();
                 return existingMovie;
@@ -686,7 +697,7 @@ public class CollectionProcessService {
                 String url = String.format("%s?page=%d", COLLECTION_BASE_URL, page);
                 logger.infof("Fetching collection page: %s", url);
 
-                Request request = HttpClientUtils.createRequestBuilderWithReferer(url, COOKIE_STRING, "https://123av.com/zh/user/feed", false)
+                Request request = HttpClientUtils.createRequestBuilderWithReferer(url, COOKIE_STRING, "https://123av.com/en/user/feed", false)
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
@@ -699,7 +710,7 @@ public class CollectionProcessService {
                     String htmlContent = response.body().string();
 
                     // Extract movies from the collection page
-                    List<Movie> pageMovies = extractMovieFromElement(htmlContent, "https://123av.com/ja");
+                    List<Movie> pageMovies = extractMovieFromElement(htmlContent);
                     if (pageMovies != null && !pageMovies.isEmpty()) {
                         movies.addAll(pageMovies);
                     }
@@ -725,102 +736,103 @@ public class CollectionProcessService {
         return movies;
     }
 
-    /**
-     * Extract movie information from the collection page HTML
-     *
-     * @param htmlContent The HTML content of the collection page
-     * @param baseUrl The base URL of the website
-     * @return List of Movie objects with extracted information
-     */
-    private List<Movie> extractMovieFromElement(String htmlContent, String baseUrl) {
+    private List<Movie> extractMovieFromElement(String htmlContent) {
         List<Movie> movies = new ArrayList<>();
         try {
             Document doc = Jsoup.parse(htmlContent);
-
-            // Find all movie boxes in the collection page
             Elements movieElements = doc.select(".box-item");
 
             for (Element element : movieElements) {
                 try {
                     Movie movie = new Movie();
 
-                    // Extract movie thumbnail
+                    // 1. 提取缩略图（修复src -> data-src）
                     Element imgElement = element.selectFirst("img");
                     if (imgElement != null) {
-                        String thumbnail = imgElement.attr("src");
+                        String thumbnail = imgElement.attr("data-src"); // 使用data-src属性
                         if (!thumbnail.isEmpty()) {
                             movie.setThumbnail(thumbnail);
-                            logger.infof("Extracted thumbnail: %s", thumbnail);
                         }
-                    }
-
-                    // Extract movie title
-                    Element titleElement = element.selectFirst(".title");
-                    if (titleElement != null) {
-                        String title = titleElement.text().trim();
+                        // 从img的title属性提取标题
+                        String title = imgElement.attr("title");
                         if (!title.isEmpty()) {
-                            movie.setTitle(title);
-                            logger.infof("Extracted title: %s", title);
+                            movie.setTitle(title.trim());
                         }
                     }
 
-                    // Extract movie code
-                    Element codeElement = element.selectFirst(".code");
-                    if (codeElement != null) {
-                        String code = codeElement.text().trim();
+                    // 2. 若标题未提取到，尝试从.detail的链接文本中获取
+                    if (movie.getTitle() == null || movie.getTitle().isEmpty()) {
+                        Element detailLink = element.selectFirst(".detail a");
+                        if (detailLink != null) {
+                            String fullText = detailLink.text().trim();
+                            String[] parts = fullText.split(" - ");
+                            if (parts.length > 0) {
+                                movie.setTitle(parts[0].trim());
+                            }
+                        }
+                    }
+
+                    // 3. 提取代码（从.favourite的data-code属性）
+                    Element favouriteButton = element.selectFirst(".favourite");
+                    if (favouriteButton != null) {
+                        String code = favouriteButton.attr("data-code");
                         if (!code.isEmpty()) {
                             movie.setCode(code);
-                            logger.infof("Extracted code: %s", code);
                         }
                     }
 
-                    // Extract movie link
+                    // 4. 提取链接（保持原逻辑）
                     Element linkElement = element.selectFirst("a");
                     if (linkElement != null) {
                         String link = linkElement.attr("href");
                         if (!link.isEmpty()) {
-                            // Ensure link has the base URL
-                            if (!link.startsWith("http")) {
-                                link = baseUrl + (link.startsWith("/") ? "" : "/") + link;
-                            }
                             movie.setLink(link);
-                            logger.infof("Extracted link: %s", link);
                         }
                     }
 
-                    // Extract originalId from favourite button
-                    Element favouriteButton = element.selectFirst(".favourite");
+                    // 5. 提取originalId（优化正则表达式）
                     if (favouriteButton != null) {
                         String vScope = favouriteButton.attr("v-scope");
-                        Pattern pattern = Pattern.compile("Favourite\\(.*?'movie',\\s*(\\d+)");
+                        Pattern pattern = Pattern.compile("Favourite\\('movie',\\s*(\\d+),");
                         Matcher matcher = pattern.matcher(vScope);
-
                         if (matcher.find()) {
                             String originalIdStr = matcher.group(1);
                             try {
                                 movie.setOriginalId(Integer.parseInt(originalIdStr));
-                                logger.infof("Extracted originalId: %d for movie %s", movie.getOriginalId(), movie.getCode());
                             } catch (NumberFormatException e) {
-                                logger.warnf("Could not parse originalId: %s", originalIdStr);
+                                logger.warnf("无法解析originalId: %s", originalIdStr);
                             }
                         }
                     }
 
-                    // Add movie to list if we have at least a code
+                    // 定位到包含duration的.thumb区块
+                    Element thumbElement = element.selectFirst(".thumb");
+                    if (thumbElement != null) {
+                        // 提取duration文本
+                        Element durationElement = thumbElement.selectFirst(".duration");
+                        if (durationElement != null) {
+                            String duration = durationElement.text().trim();
+                            if (!duration.isEmpty()) {
+                                movie.setDuration(duration);
+                                logger.infof("Extracted duration: %s", duration);
+                            }
+                        }
+                    }
+
+                    // 确保有有效代码后再添加电影
                     if (movie.getCode() != null && !movie.getCode().isEmpty()) {
                         movie.setStatus(MovieStatus.NEW.getValue());
                         movies.add(movie);
-                        logger.infof("Added movie %s to collection with originalId: %d", movie.getCode(), movie.getOriginalId());
                     }
                 } catch (Exception e) {
-                    logger.errorf("Error extracting movie from element: %s", e.getMessage());
+                    logger.errorf("提取电影信息失败: %s", e.getMessage());
                 }
             }
-            logger.info(JacksonUtils.toJsonString(movies));
             return movies;
         } catch (Exception e) {
-            logger.errorf("Error parsing collection page: %s", e.getMessage());
+            logger.errorf("解析页面失败: %s", e.getMessage());
             return movies;
         }
     }
+
 }

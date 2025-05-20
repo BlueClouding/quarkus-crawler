@@ -60,40 +60,56 @@ public class FavouriteService {
         // Use ConcurrentHashMap for thread safety
         Map<Long, FavouriteResponse> results = new ConcurrentHashMap<>();
 
-
         // Track progress
         AtomicInteger completedBatches = new AtomicInteger(0);
+        
+        // 确定处理批次的大小，根据线程池大小和总数量进行调整
+        int batchSize = 10; // 每个线程处理10个ID
+        int availableProcessors = Runtime.getRuntime().availableProcessors();
+        int optimalThreads = Math.min(availableProcessors * 2, batch.size() / batchSize + 1);
+        
+        logger.infof("Processing %d IDs with %d threads, batch size: %d", batch.size(), optimalThreads, batchSize);
 
+        // 将整个批次分成更小的子批次
+        List<List<Integer>> subBatches = new ArrayList<>();
+        List<Integer> idList = new ArrayList<>(batch);
+        
+        for (int i = 0; i < idList.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, idList.size());
+            subBatches.add(idList.subList(i, end));
+        }
+        
         // Process each batch in parallel
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
+        // 每个子批次创建一个独立的任务
+        for (List<Integer> subBatch : subBatches) {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                for (Integer id : subBatch) {
+                    FavouriteRequest request = new FavouriteRequest();
+                    request.setAction(action);
+                    request.setType("movie");
+                    request.setId(Long.valueOf(id));
 
-        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    // Process with retry mechanism
+                    FavouriteResponse response = processFavouriteWithRetry(request);
+                    results.put(Long.valueOf(id), response);
 
-            for (Integer id : batch) {
-                FavouriteRequest request = new FavouriteRequest();
-                request.setAction(action);
-                request.setType("movie");
-                request.setId(Long.valueOf(id));
-
-                // Process with retry mechanism
-                FavouriteResponse response = processFavouriteWithRetry(request);
-                results.put(Long.valueOf(id), response);
-
-                // Add a small delay to avoid overwhelming the server
-                try {
-                    Thread.sleep(50); // Reduced delay since we're using multiple threads
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    logger.warn("Thread interrupted during delay between requests");
+                    // Add a small delay to avoid overwhelming the server
+                    try {
+                        Thread.sleep(50); // Reduced delay since we're using multiple threads
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        logger.warn("Thread interrupted during delay between requests");
+                    }
                 }
-            }
 
-            int completed = completedBatches.incrementAndGet();
-            logger.infof("Completed batch %d for %s operation", completed, action);
-        }, favouriteThreadPool);
+                int completed = completedBatches.incrementAndGet();
+                logger.infof("Completed batch %d/%d for %s operation", completed, subBatches.size(), action);
+            }, favouriteThreadPool);
 
-        futures.add(future);
+            futures.add(future);
+        }
 
         // Wait for all futures to complete
         CompletableFuture<Void> allFutures = CompletableFuture.allOf(
@@ -103,7 +119,7 @@ public class FavouriteService {
         // Wait for all futures to complete
         allFutures.join();
 
-        logger.infof("Completed processing %s for IDs", action, results.size());
+        logger.infof("Completed processing %s for %d IDs", action, results.size());
         return results;
     }
 
