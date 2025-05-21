@@ -28,13 +28,13 @@ public class MovieDetailCrawlerWorker {
 
     @Inject
     MovieDetailCrawlerService movieDetailCrawlerService;
-    
+
     @Inject
     MovieInfoExtractionService movieInfoExtractionService;
 
     private static final int BATCH_SIZE = 10; // 每次批量处理数
     private static final int THREAD_POOL_SIZE = 5; // 并发线程数
-    
+
     // 每5秒执行一次，不允许并发执行
     @Scheduled(every = "5s", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     void scheduledBatchProcess(ScheduledExecution execution) {
@@ -51,14 +51,14 @@ public class MovieDetailCrawlerWorker {
 
     public boolean processMoviesBatch(int batchSize) {
         // 查询电影ID列表，不过滤状态，只限制数量
-        List<Movie> movies = Movie.find("status = ?1 order by id desc", CrawlerStatus.PROCESSING.getValue())
+        List<Movie> movies = Movie.find("status = ?1 order by id desc", CrawlerStatus.NEW.getValue())
                                 .page(0, batchSize)
                                 .list();
-        
+
         if (movies == null || movies.isEmpty()) {
             return false;
         }
-        
+
         // 提取ID列表，从链接中提取电影代码
         List<String> movieCodes = movies.stream()
                                     .map(movie -> {
@@ -77,15 +77,15 @@ public class MovieDetailCrawlerWorker {
                                         // 如果链接为空或无法提取，则返回存储的代码
                                         return movie.code;
                                     })
-                                    .collect(Collectors.toList());
-        
+                                    .toList();
+
         logger.infof("Processing batch of %d movies", movieCodes.size());
         // 使用固定大小的线程池并发处理
         var executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         try {
             List<CompletableFuture<Void>> futures = movieCodes.stream()
                 .map(code -> CompletableFuture.runAsync(() -> processOneMovieByCode(code), executor))
-                .collect(Collectors.toList());
+                .toList();
             // 等待所有任务完成
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             logger.infof("Batch of %d movies finished successfully", movieCodes.size());
@@ -105,24 +105,24 @@ public class MovieDetailCrawlerWorker {
             logger.warnf("Movie code is null");
             return;
         }
-        
+
         logger.infof("Processing movie code:{}", code);
-        
+
         try {
             // 步骤1: 提取电影信息到movie_info表中
             List<MovieInfo> extractedInfos = movieInfoExtractionService.extractAndSaveAllLanguages(code);
             logger.infof("Extracted %d language versions for movie: %s", extractedInfos.size(), code);
-            
+
             // 步骤2: 更新Movie表中的状态为已处理
             updateMovieStatusToProcessed(code);
-            
+
             logger.infof("Successfully processed movie: %s", code);
         } catch (Exception e) {
             logger.errorf("Failed to process movie %s: %s", code, e.getMessage());
             updateMovieStatusToFailed(code);
         }
     }
-    
+
     /**
      * 在新事务中更新电影状态为已处理
      */
@@ -135,7 +135,7 @@ public class MovieDetailCrawlerWorker {
             logger.errorf("Failed to update movie status to ONLINE: %s", ex.getMessage());
         }
     }
-    
+
     /**
      * 在新事务中更新电影状态为失败
      */

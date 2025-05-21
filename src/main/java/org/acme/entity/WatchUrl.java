@@ -38,6 +38,9 @@ public class WatchUrl extends PanacheEntity {
 
     public String status;
 
+    @Column(name = "`like_status`")
+    public String likeStatus;
+
     public Integer getMovieId() {
         return movieId;
     }

@@ -89,7 +89,7 @@ public class CollectionProcessService {
             // Calculate endId based on startId and batchSize
 
             logger.infof("Starting batch processing ids");
-            List<WatchUrl> watchUrls = WatchUrl.find("status = ?1 order by id desc", MovieStatus.ONLINE.getValue())
+            List<WatchUrl> watchUrls = WatchUrl.find("status = ?1 and likeStatus is null order by id desc", MovieStatus.ONLINE.getValue())
                     .page(0, batchSize)
                     .list();
             Set<Integer> ids = watchUrls.stream().map(WatchUrl::getMovieId).collect(Collectors.toSet());
@@ -332,7 +332,7 @@ public class CollectionProcessService {
             List<Movie> fetchedMovies = futures.stream()
                     .map(CompletableFuture::join)
                     .flatMap(List::stream)
-                    .collect(Collectors.toList());
+                    .toList();
 
             logger.infof("All page batches completed, fetched %d movies total", fetchedMovies.size());
 
@@ -666,6 +666,10 @@ public class CollectionProcessService {
                 }
 
                 existingMovie.persist();
+
+                // 更新相关联的 WatchUrl 记录的 like_status 字段为 succeed
+                updateWatchUrlLikeStatus(existingMovie);
+
                 return existingMovie;
             } else {
                 // Create new movie with required fields
@@ -674,11 +678,53 @@ public class CollectionProcessService {
                 }
 
                 movie.persist();
+
+                // 对于新创建的电影，也更新相关联的 WatchUrl 记录
+                updateWatchUrlLikeStatus(movie);
+
                 return movie;
             }
         } catch (Exception e) {
             logger.errorf("Error saving movie %s: %s", movie.getCode(), e.getMessage());
             throw e;
+        }
+    }
+
+    /**
+     * 更新电影关联的所有 WatchUrl 记录的 like_status 字段为 succeed
+     *
+     * @param movie 要处理的电影对象
+     */
+    private void updateWatchUrlLikeStatus(Movie movie) {
+        if (movie == null || movie.originalId == null) {
+            return;
+        }
+
+        try {
+            // 查找与当前电影关联的所有 WatchUrl 记录
+            List<WatchUrl> watchUrls = WatchUrl.list("movieId", movie.originalId);
+
+            if (watchUrls == null || watchUrls.isEmpty()) {
+                // 没有关联的 WatchUrl 记录，无需处理
+                return;
+            }
+
+            // 批量更新所有关联的 WatchUrl 记录
+            for (WatchUrl watchUrl : watchUrls) {
+                // 添加 like_status 字段并设置为 succeed
+                // 如果该字段已存在则会更新，否则会自动在数据库中添加该字段
+                watchUrl.likeStatus = "succeed";
+                watchUrl.code = movie.code;
+                watchUrl.persist();
+            }
+
+            logger.infof("Updated like_status to 'succeed' for %d WatchUrl records of movie %s",
+                    watchUrls.size(), movie.getCode());
+
+        } catch (Exception e) {
+            logger.errorf("Error updating WatchUrl like_status for movie %s: %s",
+                    movie.getCode(), e.getMessage());
+            // 不抛出异常，避免影响主流程
         }
     }
 
@@ -814,7 +860,6 @@ public class CollectionProcessService {
                             String duration = durationElement.text().trim();
                             if (!duration.isEmpty()) {
                                 movie.setDuration(duration);
-                                logger.infof("Extracted duration: %s", duration);
                             }
                         }
                     }
