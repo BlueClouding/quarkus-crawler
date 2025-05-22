@@ -31,25 +31,23 @@ public class MovieInfoExtractor {
         .writeTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build();
-    
+
     // 使用静态OkHttpClient实例提高性能
-    
+
 
 
     /**
      * Extracts movie information for a specific language.
-     * 
-     * @param dvdCode The DVD code of the movie
-     * @param languageCode The language code (empty string for Traditional Chinese, "cn" for Simplified Chinese, etc.)
+     *
      * @return A map containing the extracted movie information
      * @throws IOException If an error occurs during extraction
      */
     public static Map<String, Object> extractMovieInfoForLanguage(String url) throws IOException {
-       
+
         // Pass null for movieId since we don't know it at this point
         return MovieInfoExtractorUtil.extractMovieInfoFromUrl(url, null);
     }
-    
+
     /**
      * Internal method to extract movie information from a specified URL.
      *
@@ -81,7 +79,7 @@ public class MovieInfoExtractor {
 
         // Create the result map
         Map<String, Object> result = new HashMap<>();
-        
+
         // Attempt to fetch and parse the webpage
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
@@ -91,32 +89,32 @@ public class MovieInfoExtractor {
             // Parse the HTML
             String html = response.body().string();
             Document doc = Jsoup.parse(html);
-            
+
             // Store DVD ID
             result.put("dvd_id", url.substring(url.lastIndexOf("/") + 1));
-            
+
             // Extract metadata
             Map<String, Object> metadata = extractMetadata(doc);
             result.putAll(metadata);
-            
+
             // Extract title
             String title = doc.select("h1.video-details-title").text();
             result.put("title", title);
-            
+
             // Extract description
             String description = doc.select("div.video-details-description").text();
             result.put("description", description);
-            
+
             // Extract cover URL
             Elements imgElements = doc.select("div.video-cover img");
             if (!imgElements.isEmpty()) {
                 String coverUrl = imgElements.first().attr("src");
                 result.put("cover_url", coverUrl);
             }
-            
+
             // Extract M3U8 links
             result.put("m3u8_info", extractM3u8Info(doc));
-            
+
             // Extract duration
             Elements durationElements = doc.select("div.video-info span:contains(分钟), div.video-info span:contains(seconds), div.video-info span:contains(分)");
             if (!durationElements.isEmpty()) {
@@ -126,16 +124,16 @@ public class MovieInfoExtractor {
                 result.put("duration", duration);
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * Extracts M3U8 information from the document
      */
     private static List<String> extractM3u8Info(Document doc) {
         List<String> m3u8Links = new ArrayList<>();
-        
+
         // Direct extraction from video source tags
         Elements sources = doc.select("video source");
         for (Element source : sources) {
@@ -144,24 +142,24 @@ public class MovieInfoExtractor {
                 m3u8Links.add(url);
             }
         }
-        
+
         return m3u8Links;
     }
-    
+
     // 移除未使用的方法
-    
+
     /**
      * Extracts metadata from the document based on various language patterns
-     * 
+     *
      * @param doc The HTML document
      * @return A map containing the extracted metadata
      */
     private static Map<String, Object> extractMetadata(Document doc) {
         Map<String, Object> metadata = new HashMap<>();
-        
+
         // Define field patterns for different languages
         Map<String, String[]> fieldPatterns = new HashMap<>();
-        
+
         // For series field patterns - All 13 languages
         fieldPatterns.put("series", new String[]{
             "系列", // Traditional & Simplified Chinese
@@ -176,7 +174,7 @@ public class MovieInfoExtractor {
             "Serye", // Filipino
             "Série" // Portuguese
         });
-        
+
         // For maker field patterns - All 13 languages
         fieldPatterns.put("maker", new String[]{
             "片商", "制作商", // Traditional & Simplified Chinese
@@ -192,7 +190,7 @@ public class MovieInfoExtractor {
             "Gumagawa", // Filipino
             "Fabricante" // Portuguese
         });
-        
+
         // For label field patterns - All 13 languages
         fieldPatterns.put("label", new String[]{
             "發行商", "发行商", // Traditional & Simplified Chinese
@@ -208,7 +206,7 @@ public class MovieInfoExtractor {
             "Tatak", // Filipino
             "Gravadora" // Portuguese
         });
-        
+
         // For release date field patterns - All 13 languages
         fieldPatterns.put("releaseDate", new String[]{
             "發行日期", "发行日期", // Traditional & Simplified Chinese
@@ -224,7 +222,7 @@ public class MovieInfoExtractor {
             "Petsa ng Paglabas", // Filipino
             "Data de lançamento" // Portuguese
         });
-        
+
         // For actor field patterns - All 13 languages
         fieldPatterns.put("actor", new String[]{
             "女優", "女优", // Traditional & Simplified Chinese
@@ -240,7 +238,7 @@ public class MovieInfoExtractor {
             "Artista", // Filipino
             "Atriz" // Portuguese
         });
-        
+
         // For genre field patterns - All 13 languages
         fieldPatterns.put("genre", new String[]{
             "類別", "类别", // Traditional & Simplified Chinese
@@ -256,33 +254,33 @@ public class MovieInfoExtractor {
             "Uri", // Filipino
             "Gênero" // Portuguese
         });
-        
+
         // Extract information from the HTML
         Elements infoRows = doc.select("div.video-meta-row");
         for (Element row : infoRows) {
             String label = row.select("div.video-meta-title").text().trim();
             String value = row.select("div.video-meta-data").text().trim();
-            
+
             // Process series field
             if (containsAnyIgnoreCase(label, fieldPatterns.get("series"))) {
                 metadata.put("series", value);
             }
-            
+
             // Process maker field
             else if (containsAnyIgnoreCase(label, fieldPatterns.get("maker"))) {
                 metadata.put("maker", value);
             }
-            
+
             // Process label field
             else if (containsAnyIgnoreCase(label, fieldPatterns.get("label"))) {
                 metadata.put("label", value);
             }
-            
+
             // Process actor field
             else if (containsAnyIgnoreCase(label, fieldPatterns.get("actor"))) {
                 metadata.put("actor", value);
             }
-            
+
             // Process genre field
             else if (containsAnyIgnoreCase(label, fieldPatterns.get("genre"))) {
                 List<String> genres = new ArrayList<>();
@@ -292,13 +290,13 @@ public class MovieInfoExtractor {
                 }
                 metadata.put("genres", genres);
             }
-            
+
             // Process release date field
             else if (containsAnyIgnoreCase(label, fieldPatterns.get("releaseDate"))) {
                 // Check if there's a time element
                 Element timeElement = row.select("div.video-meta-data time").first();
                 String releaseDate;
-                
+
                 if (timeElement != null) {
                     // Get date from datetime attribute
                     releaseDate = timeElement.attr("datetime");
@@ -317,7 +315,7 @@ public class MovieInfoExtractor {
                 }
             }
         }
-        
+
         // Extract website publication date
         Element pubDateElement = doc.select("meta[property=article:published_time]").first();
         if (pubDateElement != null) {
@@ -330,13 +328,13 @@ public class MovieInfoExtractor {
                 metadata.put("website_date", pubDate);
             }
         }
-        
+
         return metadata;
     }
-    
+
     /**
      * Checks if a string contains any of the provided patterns, ignoring case
-     * 
+     *
      * @param text The text to check
      * @param patterns The patterns to look for
      * @return true if the text contains any of the patterns, false otherwise
@@ -345,13 +343,13 @@ public class MovieInfoExtractor {
         if (text == null || patterns == null) {
             return false;
         }
-        
+
         for (String pattern : patterns) {
             if (text.toLowerCase().contains(pattern.toLowerCase())) {
                 return true;
             }
         }
-        
+
         return false;
     }
 }

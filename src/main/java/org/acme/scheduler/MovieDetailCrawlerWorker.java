@@ -13,6 +13,7 @@ import org.acme.service.MovieInfoExtractionService;
 import org.jboss.logging.Logger;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 import io.netty.util.internal.StringUtil;
 import io.quarkus.scheduler.Scheduled;
 import io.quarkus.scheduler.ScheduledExecution;
+import jakarta.ws.rs.core.Response;
 
 @ApplicationScoped
 public class MovieDetailCrawlerWorker {
@@ -36,7 +38,7 @@ public class MovieDetailCrawlerWorker {
     private static final int THREAD_POOL_SIZE = 5; // 并发线程数
 
     // 每5秒执行一次，不允许并发执行
-    @Scheduled(every = "5s", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+//    @Scheduled(every = "5s", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     void scheduledBatchProcess(ScheduledExecution execution) {
         logger.info("SCHEDULED TASK TRIGGERED at " + execution.getScheduledFireTime() + ", batch size: " + BATCH_SIZE);
         try {
@@ -110,7 +112,11 @@ public class MovieDetailCrawlerWorker {
 
         try {
             // 步骤1: 提取电影信息到movie_info表中
-            List<MovieInfo> extractedInfos = movieInfoExtractionService.extractAndSaveAllLanguages(code);
+            Movie movie = Movie.find("code = ?1", code).firstResult();
+            if (movie == null) {
+                return;
+            }
+            List<MovieInfo> extractedInfos = movieInfoExtractionService.extractAndSaveAllLanguages(movie);
             logger.infof("Extracted %d language versions for movie: %s", extractedInfos.size(), code);
 
             // 步骤2: 更新Movie表中的状态为已处理

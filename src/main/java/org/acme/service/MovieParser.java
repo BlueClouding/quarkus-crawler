@@ -122,6 +122,7 @@ public class MovieParser {
         this.objectMapper = new ObjectMapper();
     }
 
+    // todo 适配多语言
     public List<Movie> extractMovieLinks(String htmlContent, String baseUrl) {
         List<Movie> movies = new ArrayList<>();
         try {
@@ -287,7 +288,7 @@ public class MovieParser {
 
             String cookieString = "_ga=GA1.1.1641394730.1737617680; _ga_VZGC2QQBZ8=GS1.1.1744253403.22.1.1744254946.0.0.0";
             boolean isJsonContent = true; // This is a JSON AJAX request
-            
+
             // Use HttpClientUtils to create a request with common headers for JSON content
             Request request = org.acme.util.HttpClientUtils.createRequestBuilder(ajaxUrl, cookieString, isJsonContent).build();
 

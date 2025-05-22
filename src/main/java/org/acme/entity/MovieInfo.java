@@ -81,6 +81,10 @@ public class MovieInfo extends PanacheEntity {
     @Column(name = "updated_at")
     public Instant updatedAt;
 
+    // source
+    @Column(length = 55)
+    public String source;
+
     // 构造函数
     public MovieInfo() {
     }
@@ -208,5 +212,13 @@ public class MovieInfo extends PanacheEntity {
     
     public void setM3u8Info(List<String> m3u8Info) {
         this.m3u8Info = m3u8Info;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
     }
 }
