@@ -38,7 +38,7 @@ public class MovieDetailCrawlerWorker {
     private static final int THREAD_POOL_SIZE = 5; // 并发线程数
 
     // 每5秒执行一次，不允许并发执行
-//    @Scheduled(every = "5s", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+   @Scheduled(every = "5s", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     void scheduledBatchProcess(ScheduledExecution execution) {
         logger.info("SCHEDULED TASK TRIGGERED at " + execution.getScheduledFireTime() + ", batch size: " + BATCH_SIZE);
         try {

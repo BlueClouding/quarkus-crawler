@@ -122,7 +122,6 @@ public class MovieParser {
         this.objectMapper = new ObjectMapper();
     }
 
-    // todo 适配多语言
     public List<Movie> extractMovieLinks(String htmlContent, String baseUrl) {
         List<Movie> movies = new ArrayList<>();
         try {

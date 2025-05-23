@@ -16,6 +16,7 @@ import org.jboss.logging.Logger;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -463,7 +464,7 @@ public class MovieInfoExtractorUtil {
      * Initialize and return field patterns for all supported languages and fields
      * @return A map containing all field patterns
      */
-    private static Map<String, String[]> initializeFieldPatterns() {
+    public static Map<String, String[]> initializeFieldPatterns() {
         Map<String, String[]> fieldPatterns = new HashMap<>();
         // For series field patterns - All 13 languages
         fieldPatterns.put("series", new String[]{
@@ -698,6 +699,133 @@ public class MovieInfoExtractorUtil {
         }
     }
     
+    /**
+     * Extracts information from MissAV HTML content
+     * 
+     * @param htmlContent The HTML content to parse
+     * @return A map containing the extracted information
+     */
+    public static Map<String, Object> extractMissavInfo(String htmlContent) {
+        Document doc = Jsoup.parse(htmlContent);
+        Map<String, Object> info = new HashMap<>();
+        
+        // Extract title
+        String title = extractMissavTitle(doc);
+        info.put("title", title);
+        
+        // Extract details
+        Map<String, String> details = extractMissavDetails(doc);
+        for (Map.Entry<String, String> entry : details.entrySet()) {
+            info.put(entry.getKey(), entry.getValue());
+        }
+        
+        // Extract movie ID
+        String movieId = extractMissavMovieId(doc);
+        info.put("movie_id", movieId);
+        
+        // Extract cover URL
+        String coverUrl = extractMissavCoverUrl(doc);
+        info.put("cover_url", coverUrl);
+        
+        return info;
+    }
+    
+    /**
+     * Extracts the title from a MissAV HTML document
+     * 
+     * @param doc The Jsoup Document
+     * @return The extracted title
+     */
+    public static String extractMissavTitle(Document doc) {
+        Element titleElement = doc.selectFirst("h1");
+        return titleElement != null ? titleElement.text() : null;
+    }
+    
+    /**
+     * Extracts the details from a MissAV HTML document
+     * 
+     * @param doc The Jsoup Document
+     * @return Map of detail keys and values
+     */
+    public static Map<String, String> extractMissavDetails(Document doc) {
+        Map<String, String> details = new HashMap<>();
+        Element detailsDiv = doc.selectFirst("div.detail-item");
+        
+        if (detailsDiv != null) {
+            Elements detailItems = detailsDiv.select("div");
+            for (Element item : detailItems) {
+                Elements spans = item.select("span");
+                if (spans.size() >= 2) {
+                    String key = spans.get(0).text().replace(":", "").trim().toLowerCase();
+                    String value = spans.get(1).text().trim();
+                    details.put(key, value);
+                }
+            }
+        }
+        
+        return details;
+    }
+    
+    /**
+     * Extracts the movie ID from a MissAV HTML document
+     * 
+     * @param doc The Jsoup Document
+     * @return The extracted movie ID
+     */
+    public static String extractMissavMovieId(Document doc) {
+        // Look for the v-scope attribute containing Favourite('movie', ID, 0)
+        Elements elements = doc.select("[v-scope*=Favourite('movie']");
+        
+        for (Element element : elements) {
+            String vScope = element.attr("v-scope");
+            Pattern pattern = Pattern.compile("Favourite\\('movie', (\\d+),");
+            Matcher matcher = pattern.matcher(vScope);
+            
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        
+        // Try alternative method - look for data-code attribute
+        Element dataCodeElement = doc.selectFirst("[data-code]");
+        if (dataCodeElement != null) {
+            String dataCode = dataCodeElement.attr("data-code");
+            if (dataCode != null && !dataCode.isEmpty()) {
+                return dataCode;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extracts the cover URL from a MissAV HTML document
+     * 
+     * @param doc The Jsoup Document
+     * @return The extracted cover URL
+     */
+    public static String extractMissavCoverUrl(Document doc) {
+        // Method 1: Look for the player div with data-poster attribute
+        Element playerDiv = doc.selectFirst("div#player[data-poster]");
+        if (playerDiv != null) {
+            String dataPoster = playerDiv.attr("data-poster");
+            if (dataPoster != null && !dataPoster.isEmpty()) {
+                return dataPoster;
+            }
+        }
+        
+        // Method 2: Look for meta og:image tag
+        Element metaOgImage = doc.selectFirst("meta[property=og:image]");
+        if (metaOgImage != null) {
+            String content = metaOgImage.attr("content");
+            if (content != null && !content.isEmpty()) {
+                return content;
+            }
+        }
+        
+        return null;
+    }
+    
     public static void main(String[] args) {
         try {
             if (args.length > 0 && args[0].equals("--download-languages")) {
@@ -706,6 +834,22 @@ public class MovieInfoExtractorUtil {
                 System.out.println("Starting language scraper for: " + videoId);
                 downloadAllLanguages(videoId);
                 System.out.println("Done!");
+            } else if (args.length > 0 && args[0].equals("--test-missav")) {
+                // Test MissAV extraction
+                String filePath = args.length > 1 ? args[1] : "data/movie_midv-936_lang_zh-tw_20250523_151540.html";
+                String htmlContent = Files.readString(Paths.get(filePath), StandardCharsets.UTF_8);
+                Map<String, Object> info = extractMissavInfo(htmlContent);
+                
+                System.out.println("MissAV 影片信息:");
+                System.out.println("标题: " + info.get("title"));
+                System.out.println("电影 ID: " + info.get("movie_id"));
+                System.out.println("封面 URL: " + info.get("cover_url"));
+                System.out.println("详情:");
+                info.forEach((key, value) -> {
+                    if (!key.equals("title") && !key.equals("movie_id") && !key.equals("cover_url")) {
+                        System.out.println("  " + key + ": " + value);
+                    }
+                });
             } else {
                 // Extract movie info (original functionality)
                 long startTime = System.currentTimeMillis();

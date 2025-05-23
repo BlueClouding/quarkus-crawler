@@ -23,8 +23,6 @@ public class GenrePageService {
         List<Genre> allGenres = Genre.listAll();
         logger.info(String.format("Processing up to %d genres", allGenres.size()));
 
-        // 单线程批处理，简化事务管理
-        int processedCount = 0;
         for (int i = 0; i < allGenres.size(); i++) {
             Genre genre = allGenres.get(i);
             try {

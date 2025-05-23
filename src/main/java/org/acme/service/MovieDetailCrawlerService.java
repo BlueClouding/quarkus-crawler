@@ -29,15 +29,8 @@ public class MovieDetailCrawlerService {
                 .build();
     }
 
-    // Assuming you have a method to modify the URL if needed
-    private String modifyUrl(String url) {
-        // Implement your URL modification logic here
-        return url;
-    }
-
     public Movie processMovie(Movie movie) {
         String url = movie.getLink();
-        url = modifyUrl(url);
         movie.setLink(url);
 
         try {
@@ -61,8 +54,7 @@ public class MovieDetailCrawlerService {
                 // Parse movie details
                 String responseBody = response.body().string();
                 Optional<Movie> movieDetail = movieParser.parseMoviePage(movie, responseBody, url);
-            return movieDetail.orElse(null);
-
+                return movieDetail.orElse(null);
             }
         } catch (IOException e) {
             logger.errorf("Error processing movie %s: %s", url, e.getMessage());

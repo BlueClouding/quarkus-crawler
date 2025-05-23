@@ -23,7 +23,7 @@ public class CollectionMoiveProcessWorker {
     CollectionProcessService collectionProcessService;
 
 
-//    @Scheduled(every = "30s", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+   @Scheduled(every = "30s", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     void scheduledBatchProcess(ScheduledExecution execution) {
         logger.info("SCHEDULED scheduledBatchProcess at " + execution.getScheduledFireTime());
         try {

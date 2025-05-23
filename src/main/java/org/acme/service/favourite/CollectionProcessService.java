@@ -633,7 +633,6 @@ public class CollectionProcessService {
         return result;
     }
 
-
     /**
      * Save or update a movie in the database
      *
@@ -647,11 +646,13 @@ public class CollectionProcessService {
         }
 
         try {
-            // Check if movie already exists by code
-            Movie existingMovie = Movie.find("code", movie.getCode()).firstResult();
+            // 使用事务内查询确保最新状态
+            Movie existingMovie = Movie.find("code = ?1", movie.getCode()).firstResult();
 
             if (existingMovie != null) {
-                // Update existing movie
+                logger.infof("Found existing movie with code %s, updating instead of creating new", movie.getCode());
+                
+                // 更新现有电影的字段，只更新非空值
                 if (movie.getTitle() != null) {
                     existingMovie.setTitle(movie.getTitle());
                 }
@@ -664,29 +665,98 @@ public class CollectionProcessService {
                 if (movie.getOriginalId() != null) {
                     existingMovie.setOriginalId(movie.getOriginalId());
                 }
-
+                if (movie.getCoverImageUrl() != null) {
+                    existingMovie.setCoverImageUrl(movie.getCoverImageUrl());
+                }
+                if (movie.getDescription() != null) {
+                    existingMovie.setDescription(movie.getDescription());
+                }
+                if (movie.getDuration() != null) {
+                    existingMovie.setDuration(movie.getDuration());
+                }
+                if (movie.getDirector() != null) {
+                    existingMovie.setDirector(movie.getDirector());
+                }
+                if (movie.getMaker() != null) {
+                    existingMovie.setMaker(movie.getMaker());
+                }
+                if (movie.getSeries() != null) {
+                    existingMovie.setSeries(movie.getSeries());
+                }
+                if (movie.getReleaseDate() != null) {
+                    existingMovie.setReleaseDate(movie.getReleaseDate());
+                }
+                if (movie.getPreviewVideoUrl() != null) {
+                    existingMovie.setPreviewVideoUrl(movie.getPreviewVideoUrl());
+                }
+                if (movie.getActresses() != null && !movie.getActresses().isEmpty()) {
+                    existingMovie.setActresses(movie.getActresses());
+                }
+                if (movie.getGenres() != null && !movie.getGenres().isEmpty()) {
+                    existingMovie.setGenres(movie.getGenres());
+                }
+                if (movie.getTags() != null && !movie.getTags().isEmpty()) {
+                    existingMovie.setTags(movie.getTags());
+                }
+                
+                // 更新状态相关字段
+                if (movie.getStatus() != null) {
+                    existingMovie.setStatus(movie.getStatus());
+                }
+                
+                // 确保更新时间是最新的
+                existingMovie.setUpdatedAt(java.time.Instant.now());
+                
+                // 使用merge而不是persist来确保更新
                 existingMovie.persist();
-
+                
                 // 更新相关联的 WatchUrl 记录的 like_status 字段为 succeed
                 updateWatchUrlLikeStatus(existingMovie);
-
+                
                 return existingMovie;
             } else {
-                // Create new movie with required fields
+                // 创建新电影记录
+                logger.infof("Creating new movie with code %s", movie.getCode());
+                
+                // 设置必填字段的默认值
                 if (movie.getDuration() == null) {
-                    movie.setDuration("未知"); // Set a default value for required field
+                    movie.setDuration("未知");
                 }
-
+                
+                // 设置创建和更新时间
+                java.time.Instant now = java.time.Instant.now();
+                movie.setCreatedAt(now);
+                movie.setUpdatedAt(now);
+                
+                // 使用persist保存新记录
                 movie.persist();
-
+                
                 // 对于新创建的电影，也更新相关联的 WatchUrl 记录
                 updateWatchUrlLikeStatus(movie);
-
+                
                 return movie;
             }
         } catch (Exception e) {
             logger.errorf("Error saving movie %s: %s", movie.getCode(), e.getMessage());
-            throw e;
+            
+            // 尝试再次查询以确认是否已存在记录
+            if (e.getMessage() != null && e.getMessage().contains("duplicate key value violates unique constraint")) {
+                logger.infof("Duplicate key detected for movie %s, attempting to update existing record", movie.getCode());
+                
+                try {
+                    // 如果是重复键错误，尝试再次查询并更新
+                    Movie existingMovie = Movie.find("code = ?1", movie.getCode()).firstResult();
+                    if (existingMovie != null) {
+                        // 更新现有记录
+                        logger.infof("Found existing movie with code %s after duplicate key error, updating", movie.getCode());
+                        return saveMovie(movie); // 递归调用，但这次会走更新路径
+                    }
+                } catch (Exception retryEx) {
+                    logger.errorf("Error during retry for movie %s: %s", movie.getCode(), retryEx.getMessage());
+                }
+            }
+            
+            throw e; // 如果无法处理，重新抛出异常
         }
     }
 

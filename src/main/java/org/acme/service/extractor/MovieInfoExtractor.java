@@ -1,4 +1,4 @@
-package org.acme.extractor;
+package org.acme.service.extractor;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
